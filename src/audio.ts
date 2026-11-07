@@ -48,7 +48,7 @@ export class MusicPlayer {
     const ctx = this.context, master = this.master;
     if (!ctx || !master || this.active.size >= 32) return;
     const osc = ctx.createOscillator();
-    const shimmer = voiceFor(event) === "lead" ? ctx.createOscillator() : null;
+    const shimmer = (event.voice ?? "lead") === "lead" ? ctx.createOscillator() : null;
     const gain = ctx.createGain();
     const filter = ctx.createBiquadFilter();
     const pan = ctx.createStereoPanner();
