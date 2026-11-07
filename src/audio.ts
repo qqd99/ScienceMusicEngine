@@ -1,4 +1,9 @@
 import type { Composition, NoteEvent } from "./math";
+export type SoundProfile = "hybrid-cinematic" | "natural" | "electronic";
+export type InstrumentLevels = Record<keyof InstrumentSettings, number>;
+export const DEFAULT_INSTRUMENT_LEVELS: InstrumentLevels = { piano: 0.9, analog: 0.72, plucked: 0.82, cinematicBass: 0.9, atmosphere: 0.72 };
+export const DEFAULT_SOUND_PROFILE: SoundProfile = "hybrid-cinematic";
+
 export interface InstrumentSettings {
   piano: boolean;
   analog: boolean;
@@ -60,7 +65,9 @@ function scheduleInstrumentLayer(
   instrument: keyof InstrumentSettings,
   atTime: number,
   destination: AudioNode,
-  onEnded?: (source: AudioScheduledSourceNode) => void
+  onEnded?: (source: AudioScheduledSourceNode) => void,
+  profile: SoundProfile = DEFAULT_SOUND_PROFILE,
+  level = 1
 ): AudioScheduledSourceNode | null {
   const voice = event.voice ?? "lead";
   if ((instrument === "piano" || instrument === "analog" || instrument === "plucked") && voice !== "lead") return null;
@@ -72,48 +79,50 @@ function scheduleInstrumentLayer(
   const gain = context.createGain();
   const filter = context.createBiquadFilter();
   const pan = context.createStereoPanner();
-  const peak = Math.max(0.0001, event.velocity);
+  const peak = Math.max(0.0001, event.velocity * Math.max(0, Math.min(1.5, level)));
   oscillator.frequency.setValueAtTime(event.frequency, at);
+  const natural = profile === "natural";
+  const electronic = profile === "electronic";
   filter.type = "lowpass";
   pan.pan.setValueAtTime(event.pan, at);
 
   if (instrument === "piano") {
-    oscillator.type = "sine";
-    filter.frequency.setValueAtTime(5200, at);
+    oscillator.type = natural ? "triangle" : "sine";
+    filter.frequency.setValueAtTime(natural ? 6800 : electronic ? 4200 : 5200, at);
     gain.gain.setValueAtTime(0.0001, at);
-    gain.gain.exponentialRampToValueAtTime(peak * 0.34, at + 0.006);
-    gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, peak * 0.07), Math.min(end - 0.015, at + 0.32));
+    gain.gain.exponentialRampToValueAtTime(peak * (natural ? 0.48 : 0.38), at + 0.004);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, peak * (electronic ? 0.13 : 0.035)), Math.min(end - 0.015, at + (natural ? 0.55 : 0.28)));
     gain.gain.exponentialRampToValueAtTime(0.0001, end);
   } else if (instrument === "analog") {
-    oscillator.type = "sawtooth";
-    oscillator.detune.setValueAtTime(-5, at);
-    filter.frequency.setValueAtTime(2100, at);
-    filter.Q.setValueAtTime(2.2, at);
+    oscillator.type = natural ? "triangle" : "sawtooth";
+    oscillator.detune.setValueAtTime(electronic ? -13 : -5, at);
+    filter.frequency.setValueAtTime(natural ? 1500 : electronic ? 3200 : 2100, at);
+    filter.Q.setValueAtTime(electronic ? 4.2 : natural ? 0.8 : 2.2, at);
     gain.gain.setValueAtTime(0.0001, at);
-    gain.gain.exponentialRampToValueAtTime(peak * 0.17, at + 0.045);
+    gain.gain.exponentialRampToValueAtTime(peak * (electronic ? 0.22 : natural ? 0.12 : 0.17), at + 0.045);
     gain.gain.setValueAtTime(peak * 0.17, Math.max(at + 0.06, end - 0.09));
     gain.gain.exponentialRampToValueAtTime(0.0001, end);
   } else if (instrument === "plucked") {
-    oscillator.type = "triangle";
-    filter.frequency.setValueAtTime(3600, at);
+    oscillator.type = natural ? "sine" : "triangle";
+    filter.frequency.setValueAtTime(natural ? 2600 : electronic ? 5200 : 3600, at);
     gain.gain.setValueAtTime(0.0001, at);
-    gain.gain.exponentialRampToValueAtTime(peak * 0.42, at + 0.004);
-    gain.gain.exponentialRampToValueAtTime(0.0001, Math.max(at + 0.07, Math.min(end, at + 0.48)));
+    gain.gain.exponentialRampToValueAtTime(peak * (natural ? 0.3 : 0.42), at + 0.004);
+    gain.gain.exponentialRampToValueAtTime(0.0001, Math.max(at + 0.07, Math.min(end, at + (electronic ? 0.7 : natural ? 0.34 : 0.48))));
   } else if (instrument === "cinematicBass") {
-    oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(event.frequency * 0.5, at);
-    oscillator.frequency.exponentialRampToValueAtTime(event.frequency * 0.46, at + 0.12);
-    filter.frequency.setValueAtTime(145, at);
+    oscillator.type = electronic ? "sawtooth" : "sine";
+    oscillator.frequency.setValueAtTime(event.frequency * (electronic ? 0.25 : 0.5), at);
+    oscillator.frequency.exponentialRampToValueAtTime(event.frequency * (electronic ? 0.23 : 0.46), at + 0.12);
+    filter.frequency.setValueAtTime(electronic ? 230 : natural ? 110 : 145, at);
     gain.gain.setValueAtTime(0.0001, at);
-    gain.gain.exponentialRampToValueAtTime(peak * 0.58, at + 0.035);
+    gain.gain.exponentialRampToValueAtTime(peak * (electronic ? 0.68 : natural ? 0.48 : 0.58), at + 0.035);
     gain.gain.setValueAtTime(peak * 0.58, Math.max(at + 0.05, end - 0.12));
     gain.gain.exponentialRampToValueAtTime(0.0001, end);
   } else {
-    oscillator.type = "sine";
-    oscillator.detune.setValueAtTime(-8, at);
-    filter.frequency.setValueAtTime(1800, at);
+    oscillator.type = electronic ? "sawtooth" : "sine";
+    oscillator.detune.setValueAtTime(electronic ? -15 : natural ? -3 : -8, at);
+    filter.frequency.setValueAtTime(electronic ? 2600 : natural ? 1200 : 1800, at);
     gain.gain.setValueAtTime(0.0001, at);
-    gain.gain.exponentialRampToValueAtTime(peak * 0.22, at + Math.min(0.8, event.duration * 0.45));
+    gain.gain.exponentialRampToValueAtTime(peak * (electronic ? 0.28 : natural ? 0.16 : 0.22), at + Math.min(0.8, event.duration * 0.45));
     gain.gain.setValueAtTime(peak * 0.22, Math.max(at + 0.05, end - 0.45));
     gain.gain.exponentialRampToValueAtTime(0.0001, end);
   }
@@ -191,7 +200,9 @@ export class MusicPlayer {
   private master: GainNode | null = null;
   private compressor: DynamicsCompressorNode | null = null;
   private instruments: InstrumentSettings = { ...DEFAULT_INSTRUMENTS };
-  async play(composition: Composition, volume = 1.15, instruments: InstrumentSettings = DEFAULT_INSTRUMENTS): Promise<void> {
+  private profile: SoundProfile = DEFAULT_SOUND_PROFILE;
+  private levels: InstrumentLevels = { ...DEFAULT_INSTRUMENT_LEVELS };
+  async play(composition: Composition, volume = 1.15, instruments: InstrumentSettings = DEFAULT_INSTRUMENTS, profile: SoundProfile = DEFAULT_SOUND_PROFILE, levels: InstrumentLevels = DEFAULT_INSTRUMENT_LEVELS): Promise<void> {
     this.stop();
     const Context = window.AudioContext;
     this.context ??= new Context();
@@ -199,6 +210,8 @@ export class MusicPlayer {
     const ctx = this.context;
     this.composition = composition;
     this.instruments = { ...instruments };
+    this.profile = profile;
+    this.levels = { ...levels };
     this.playbackEvents = resolveInstrumentEvents(composition, this.instruments);
     this.master = ctx.createGain();
     this.master.gain.value = Math.max(0, Math.min(1.5, volume));
@@ -249,7 +262,7 @@ export class MusicPlayer {
     for (const instrument of Object.keys(this.instruments) as (keyof InstrumentSettings)[]) {
       if (!this.instruments[instrument] || this.active.size >= 64) continue;
       let layer!: AudioScheduledSourceNode;
-      const scheduled = scheduleInstrumentLayer(ctx, event, instrument, at, master, source => this.active.delete(source));
+      const scheduled = scheduleInstrumentLayer(ctx, event, instrument, at, master, source => this.active.delete(source), this.profile, this.levels[instrument]);
       if (scheduled) { layer = scheduled; this.active.add(layer); }
     }
     if (dedicatedEnabled) return;
@@ -292,7 +305,7 @@ export class MusicPlayer {
     osc.start(at);
     osc.stop(at + event.duration + 0.03);
   }
-  update(composition: Composition, volume = 1.15, instruments: InstrumentSettings = this.instruments): void {
+  update(composition: Composition, volume = 1.15, instruments: InstrumentSettings = this.instruments, profile: SoundProfile = this.profile, levels: InstrumentLevels = this.levels): void {
     if (!this.playing || !this.context) return;
     const ctx = this.context;
     const now = ctx.currentTime;
@@ -309,6 +322,8 @@ export class MusicPlayer {
     this.master = nextMaster;
     this.composition = composition;
     this.instruments = { ...instruments };
+    this.profile = profile;
+    this.levels = { ...levels };
     this.playbackEvents = resolveInstrumentEvents(composition, this.instruments);
     this.cycleStart = now - phase * composition.duration;
     const elapsedInCycle = phase * composition.duration;
@@ -349,7 +364,7 @@ export class MusicPlayer {
   get isPlaying(): boolean { return this.playing; }
 }
 
-export async function renderCompositionWav(composition: Composition, volume = 1.15, instruments: InstrumentSettings = DEFAULT_INSTRUMENTS): Promise<Blob> {
+export async function renderCompositionWav(composition: Composition, volume = 1.15, instruments: InstrumentSettings = DEFAULT_INSTRUMENTS, profile: SoundProfile = DEFAULT_SOUND_PROFILE, levels: InstrumentLevels = DEFAULT_INSTRUMENT_LEVELS): Promise<Blob> {
   const sampleRate = 44100;
   const tailSeconds = 1.25;
   const frameCount = Math.ceil((composition.duration + tailSeconds) * sampleRate);
@@ -377,7 +392,7 @@ export async function renderCompositionWav(composition: Composition, volume = 1.
       continue;
     }
     for (const instrument of Object.keys(instruments) as (keyof InstrumentSettings)[]) {
-      if (instruments[instrument]) scheduleInstrumentLayer(offline, event, instrument, at, master);
+      if (instruments[instrument]) scheduleInstrumentLayer(offline, event, instrument, at, master, undefined, profile, levels[instrument]);
     }
     if (dedicatedEnabled) continue;
     const oscillator = offline.createOscillator();
