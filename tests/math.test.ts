@@ -26,6 +26,12 @@ describe("mathematical generators", () => {
     const b = generateComposition("euclidean", { seed: 0.8 });
     expect(a.values).not.toEqual(b.values);
   });
+  it("arranges bass and sustained chord voices beneath the mathematical lead", () => {
+    const composition = generateComposition("mandelbrot", { seed: 0.314159 });
+    expect(composition.events.some(event => event.voice === "bass")).toBe(true);
+    expect(composition.events.some(event => event.voice === "pad")).toBe(true);
+    expect(composition.events.every((event, index, all) => index === 0 || all[index - 1].time <= event.time)).toBe(true);
+  });
   it("creates bounded, repeatable compositions", () => {
     const a = generateComposition("chaos", { seed: 0.25 });
     const b = generateComposition("chaos", { seed: 0.25 });
