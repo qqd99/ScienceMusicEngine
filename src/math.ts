@@ -6,6 +6,7 @@ export interface NoteEvent {
   velocity: number;
   waveform: OscillatorType;
   pan: number;
+  voice?: "lead" | "bass" | "pad";
 }
 export interface Composition {
   events: NoteEvent[];
@@ -67,7 +68,7 @@ export function generateComposition(mode: Mode, options: {
   const values: number[] = [];
   const add = (step: number, value: number, velocity = 0.35, length = 0.42, wave: OscillatorType = "sine") => {
     const note = scaleNote(value, root, scale);
-    events.push({ time: step * beat / 2, duration: length * beat, frequency: midiHz(note), velocity, waveform: wave, pan: Math.sin(step * 0.37) * 0.55 });
+    events.push({ time: step * beat / 2, duration: length * beat, frequency: midiHz(note), velocity, waveform: wave, pan: Math.sin(step * 0.37) * 0.55, voice: "lead" });
   };
   if (mode === "euclidean") {
     const pulses = Math.round(steps * (0.08 + complexity * 0.42));
@@ -118,5 +119,26 @@ export function generateComposition(mode: Mode, options: {
       }
     }
   }
+  // Add a restrained harmonic foundation: four two-bar chords and bass pulses.
+  const scaleNotes = SCALES[scale] ?? SCALES.Lydian;
+  const progression = scale === "Minor" ? [0, 5, 2, 6] : [0, 4, 5, 3];
+  for (let section = 0; section < 4; section++) {
+    const degree = progression[section];
+    const chordRoot = root + scaleNotes[degree % scaleNotes.length];
+    const thirdIndex = degree + 2;
+    const fifthIndex = degree + 4;
+    const chordThird = root + scaleNotes[thirdIndex % scaleNotes.length] + (thirdIndex >= scaleNotes.length ? 12 : 0);
+    const chordFifth = root + scaleNotes[fifthIndex % scaleNotes.length] + (fifthIndex >= scaleNotes.length ? 12 : 0);
+    const chordTime = section * 2 * 4 * beat;
+    for (const [tone, pan] of [[chordRoot + 12, -0.32], [chordThird + 12, 0], [chordFifth + 12, 0.32]] as const) {
+      events.push({ time: chordTime, duration: 7.7 * beat, frequency: midiHz(tone), velocity: 0.075, waveform: "triangle", pan, voice: "pad" });
+    }
+    for (let bar = 0; bar < 2; bar++) {
+      const bassTime = chordTime + bar * 4 * beat;
+      events.push({ time: bassTime, duration: 1.65 * beat, frequency: midiHz(chordRoot - 12), velocity: 0.24, waveform: "triangle", pan: -0.08, voice: "bass" });
+      events.push({ time: bassTime + 2 * beat, duration: 1.25 * beat, frequency: midiHz(chordRoot - 12), velocity: 0.15, waveform: "triangle", pan: 0.08, voice: "bass" });
+    }
+  }
+  events.sort((a, b) => a.time - b.time);
   return { events, duration, values, label: mode };
 }
