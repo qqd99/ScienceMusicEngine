@@ -57,7 +57,6 @@ export function resolveInstrumentEvents(composition: Composition, instruments: I
   }
   const hasBass = events.some(event => event.voice === "bass");
   const hasPads = events.some(event => event.voice === "pad");
-  const beat = composition.duration / 32;
 
   // If arrangement is disabled, derive deterministic support notes from the
   // mathematical lead. Never substitute random pitches.
@@ -102,7 +101,9 @@ function scheduleInstrumentLayer(
   level = 1
 ): AudioScheduledSourceNode | null {
   const voice = event.voice ?? "lead";
-  if (instrument === "piano" && voice !== "lead") return null;\n  if (instrument === "plucked" && voice !== "answer") return null;\n  if (instrument === "analog" && voice !== "texture") return null;
+  if (instrument === "piano" && voice !== "lead") return null;
+  if (instrument === "plucked" && voice !== "answer") return null;
+  if (instrument === "analog" && voice !== "texture") return null;
   if (instrument === "cinematicBass" && voice !== "bass") return null;
   if (instrument === "atmosphere" && voice !== "pad") return null;
   const at = Math.max(0, atTime);
