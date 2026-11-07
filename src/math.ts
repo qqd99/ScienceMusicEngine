@@ -6,7 +6,8 @@ export interface NoteEvent {
   velocity: number;
   waveform: OscillatorType;
   pan: number;
-  voice?: "lead" | "bass" | "pad";
+  voice?: "lead" | "bass" | "pad" | "percussion";
+  percussionKind?: "kick" | "snare" | "hat";
 }
 export interface Composition {
   events: NoteEvent[];
@@ -203,6 +204,8 @@ export function generateComposition(mode: Mode, options: {
   if (musicalArrangement) {
   const scaleNotes = SCALES[scale] ?? SCALES.Lydian;
   const progression = scale === "Minor" ? [0, 5, 2, musicalExpression ? 0 : 6] : [0, 4, 5, musicalExpression ? 0 : 3];
+  const accompanimentArc = [0.38, 0.48, 0.62, 0.74, 1.0, 0.94, 0.55, 0.28];
+  const chordRoots: number[] = [];
   for (let section = 0; section < 4; section++) {
     // The average mathematical output gently selects nearby harmonic colors;
     // the functional progression keeps the result musically grounded.
@@ -211,20 +214,51 @@ export function generateComposition(mode: Mode, options: {
     const dataNudge = Math.round((mean - 0.5) * 2);
     const degree = (progression[section] + (section === 0 || section === 3 ? 0 : dataNudge + scaleNotes.length)) % scaleNotes.length;
     const chordRoot = root + scaleNotes[degree % scaleNotes.length];
+    chordRoots.push(chordRoot);
     const thirdIndex = degree + 2;
     const fifthIndex = degree + 4;
     const chordThird = root + scaleNotes[thirdIndex % scaleNotes.length] + (thirdIndex >= scaleNotes.length ? 12 : 0);
     const chordFifth = root + scaleNotes[fifthIndex % scaleNotes.length] + (fifthIndex >= scaleNotes.length ? 12 : 0);
     const chordTime = section * 2 * 4 * beat;
     for (const [tone, pan] of [[chordRoot + 12, -0.32], [chordThird + 12, 0], [chordFifth + 12, 0.32]] as const) {
-      events.push({ time: chordTime, duration: 7.7 * beat, frequency: midiHz(tone), velocity: 0.075, waveform: "triangle", pan, voice: "pad" });
+      events.push({ time: chordTime, duration: 7.7 * beat, frequency: midiHz(tone), velocity: 0.075 * (musicalExpression ? (section === 0 ? 0.52 : section === 1 ? 0.72 : section === 2 ? 1 : 0.42) : 1), waveform: "triangle", pan, voice: "pad" });
     }
     for (let bar = 0; bar < 2; bar++) {
+      const absoluteBar = section * 2 + bar;
       const bassTime = chordTime + bar * 4 * beat;
-      events.push({ time: bassTime, duration: 1.65 * beat, frequency: midiHz(chordRoot - 12), velocity: 0.24, waveform: "triangle", pan: -0.08, voice: "bass" });
-      events.push({ time: bassTime + 2 * beat, duration: 1.25 * beat, frequency: midiHz(chordRoot - 12), velocity: 0.15, waveform: "triangle", pan: 0.08, voice: "bass" });
+      const arc = musicalExpression ? accompanimentArc[absoluteBar] : 1;
+      events.push({ time: bassTime, duration: 1.65 * beat, frequency: midiHz(chordRoot - 12), velocity: 0.24 * arc, waveform: "triangle", pan: -0.08, voice: "bass" });
+      events.push({ time: bassTime + 2 * beat, duration: 1.25 * beat, frequency: midiHz(chordRoot - 12), velocity: 0.15 * arc, waveform: "triangle", pan: 0.08, voice: "bass" });
+      if (bar === 1 && section < 3) {
+        const nextRoot = chordRoots[section + 1] ?? chordRoot;
+        events.push({ time: bassTime + 3.5 * beat, duration: 0.38 * beat, frequency: midiHz(nextRoot - 12), velocity: 0.11 * arc, waveform: "triangle", pan: 0, voice: "bass" });
+      }
     }
   }
+    if (musicalExpression) {
+      const drumBars = [
+        [{ slot: 0, kind: "kick" as const, level: 0.34 }],
+        [{ slot: 0, kind: "kick" as const, level: 0.42 }],
+        [{ slot: 0, kind: "kick" as const, level: 0.5 }, { slot: 4, kind: "snare" as const, level: 0.26 }],
+        [{ slot: 0, kind: "kick" as const, level: 0.58 }, { slot: 4, kind: "snare" as const, level: 0.34 }, { slot: 6, kind: "hat" as const, level: 0.12 }],
+        [{ slot: 0, kind: "kick" as const, level: 0.78 }, { slot: 2, kind: "hat" as const, level: 0.2 }, { slot: 4, kind: "snare" as const, level: 0.52 }, { slot: 6, kind: "hat" as const, level: 0.2 }],
+        [{ slot: 0, kind: "kick" as const, level: 0.74 }, { slot: 2, kind: "hat" as const, level: 0.18 }, { slot: 3, kind: "kick" as const, level: 0.34 }, { slot: 4, kind: "snare" as const, level: 0.5 }, { slot: 6, kind: "hat" as const, level: 0.2 }],
+        [{ slot: 0, kind: "kick" as const, level: 0.42 }, { slot: 4, kind: "snare" as const, level: 0.22 }],
+        [{ slot: 0, kind: "kick" as const, level: 0.24 }]
+      ];
+      drumBars.forEach((hits, bar) => hits.forEach(hit => {
+        events.push({
+          time: bar * 4 * beat + hit.slot * 0.5 * beat,
+          duration: hit.kind === "kick" ? 0.22 : hit.kind === "snare" ? 0.16 : 0.055,
+          frequency: hit.kind === "kick" ? 90 : hit.kind === "snare" ? 180 : 6200,
+          velocity: hit.level,
+          waveform: hit.kind === "kick" ? "sine" : hit.kind === "snare" ? "triangle" : "square",
+          pan: hit.kind === "hat" ? 0.18 : 0,
+          voice: "percussion",
+          percussionKind: hit.kind
+        });
+      }));
+    }
   }
   events.sort((a, b) => a.time - b.time);
   return { events, duration, values, label: mode, richInstruments, musicalArrangement, musicalExpression };
