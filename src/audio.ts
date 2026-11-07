@@ -139,11 +139,14 @@ export function applyEnsembleConductor(events: NoteEvent[], duration: number, en
       continue;
     }
     const progress = Math.max(0, Math.min(0.999999, event.time / duration));
+    const endProgress = Math.max(0, Math.min(0.999999, (event.time + event.duration) / duration));
     const intensity = conductorLevel(voice, progress);
-    if (intensity < CONDUCTOR_THRESHOLDS[voice]) continue;
+    const endIntensity = conductorLevel(voice, endProgress);
+    if (intensity < CONDUCTOR_THRESHOLDS[voice] && endIntensity < CONDUCTOR_THRESHOLDS[voice]) continue;
     conducted.push({
       ...event,
-      velocity: Math.max(0.001, Math.min(1, event.velocity * intensity))
+      velocity: Math.max(0.001, Math.min(1, event.velocity * intensity)),
+      velocityEnd: Math.max(0.001, Math.min(1, event.velocity * endIntensity))
     });
   }
   return conducted.sort((a, b) => a.time - b.time);
@@ -181,6 +184,7 @@ function scheduleInstrumentLayer(
   const filter = context.createBiquadFilter();
   const pan = context.createStereoPanner();
   const peak = Math.max(0.0001, event.velocity * Math.max(0, Math.min(1.5, level)));
+  const peakEnd = Math.max(0.0001, (event.velocityEnd ?? event.velocity) * Math.max(0, Math.min(1.5, level)));
   oscillator.frequency.setValueAtTime(event.frequency, at);
   const natural = profile === "natural";
   const electronic = profile === "electronic";
@@ -208,7 +212,7 @@ function scheduleInstrumentLayer(
     filter.Q.setValueAtTime(electronic ? 4.2 : natural ? 0.8 : 2.2, at);
     gain.gain.setValueAtTime(0.0001, at);
     gain.gain.exponentialRampToValueAtTime(peak * (electronic ? 0.22 : natural ? 0.12 : 0.17), at + 0.045);
-    gain.gain.setValueAtTime(peak * 0.17, Math.max(at + 0.06, end - 0.09));
+    gain.gain.linearRampToValueAtTime(peakEnd * 0.17, Math.max(at + 0.06, end - 0.09));
     gain.gain.exponentialRampToValueAtTime(0.0001, end);
   } else if (instrument === "plucked") {
     if (profile === "hybrid-cinematic") {
@@ -228,7 +232,7 @@ function scheduleInstrumentLayer(
     filter.frequency.setValueAtTime(electronic ? 230 : natural ? 110 : 145, at);
     gain.gain.setValueAtTime(0.0001, at);
     gain.gain.exponentialRampToValueAtTime(peak * (electronic ? 0.68 : natural ? 0.48 : 0.58), at + 0.035);
-    gain.gain.setValueAtTime(peak * 0.58, Math.max(at + 0.05, end - 0.12));
+    gain.gain.linearRampToValueAtTime(peakEnd * 0.58, Math.max(at + 0.05, end - 0.12));
     gain.gain.exponentialRampToValueAtTime(0.0001, end);
   } else {
     oscillator.type = electronic ? "sawtooth" : "sine";
@@ -237,7 +241,7 @@ function scheduleInstrumentLayer(
     filter.frequency.linearRampToValueAtTime(electronic ? 3400 : natural ? 900 : 1450, end);
     gain.gain.setValueAtTime(0.0001, at);
     gain.gain.exponentialRampToValueAtTime(peak * (electronic ? 0.28 : natural ? 0.16 : 0.22), at + Math.min(0.8, event.duration * 0.45));
-    gain.gain.setValueAtTime(peak * 0.22, Math.max(at + 0.05, end - 0.45));
+    gain.gain.linearRampToValueAtTime(peakEnd * 0.22, Math.max(at + 0.05, end - 0.45));
     gain.gain.exponentialRampToValueAtTime(0.0001, end);
   }
   oscillator.connect(filter).connect(gain).connect(pan).connect(destination);
@@ -390,6 +394,7 @@ export class MusicPlayer {
     const pan = ctx.createStereoPanner();
     const voice = event.voice ?? "lead";
     const peak = Math.max(0.0002, event.velocity);
+    const peakEnd = Math.max(0.0002, event.velocityEnd ?? event.velocity);
     const attack = voice === "pad" ? Math.min(0.55, event.duration * 0.3) : voice === "bass" ? 0.018 : 0.025;
     const release = voice === "pad" ? Math.min(0.7, event.duration * 0.35) : 0.08;
     const holdEnd = Math.max(at + attack + 0.02, at + event.duration - release);
@@ -412,7 +417,7 @@ export class MusicPlayer {
     filter.Q.setValueAtTime(rich && voice === "lead" ? 1.35 : 0.35, at);
     gain.gain.setValueAtTime(0.0001, at);
     gain.gain.exponentialRampToValueAtTime(peak, at + attack);
-    gain.gain.setValueAtTime(peak, holdEnd);
+    gain.gain.linearRampToValueAtTime(peakEnd, holdEnd);
     gain.gain.exponentialRampToValueAtTime(0.0001, at + event.duration);
     pan.pan.setValueAtTime(event.pan, at);
     osc.connect(filter).connect(gain).connect(pan).connect(master);
@@ -523,10 +528,11 @@ export async function renderCompositionWav(composition: Composition, volume = 1.
     const attack = voice === "pad" ? Math.min(0.55, duration * 0.3) : voice === "bass" ? 0.018 : 0.025;
     const release = voice === "pad" ? Math.min(0.7, duration * 0.35) : 0.08;
     const peak = Math.max(0.0002, event.velocity);
+    const peakEnd = Math.max(0.0002, event.velocityEnd ?? event.velocity);
     const holdEnd = Math.max(at + attack + 0.02, end - release);
     gain.gain.setValueAtTime(0.0001, at);
     gain.gain.exponentialRampToValueAtTime(peak, at + attack);
-    gain.gain.setValueAtTime(peak, holdEnd);
+    gain.gain.linearRampToValueAtTime(peakEnd, holdEnd);
     gain.gain.exponentialRampToValueAtTime(0.0001, end);
     pan.pan.setValueAtTime(event.pan, at);
     oscillator.connect(filter).connect(gain).connect(pan).connect(master);
