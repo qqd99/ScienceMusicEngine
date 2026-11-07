@@ -1,0 +1,88 @@
+import { generateComposition, type Mode } from "./math";
+import { MusicPlayer } from "./audio";
+import "./style.css";
+
+const app = document.querySelector<HTMLDivElement>("#app")!;
+const player = new MusicPlayer();
+let mode: Mode = "mandelbrot";
+let playing = false;
+let currentSeed = 0.314159;
+const names: Record<Mode, string> = {
+  mandelbrot: "Mandelbrot explorer", euclidean: "Euclidean rhythms", chaos: "Chaos theory", shepard: "Shepard illusion"
+};
+const descriptions: Record<Mode, string> = {
+  mandelbrot: "Trace the boundary of a fractal. Escape time becomes pitch, density and melodic contour.",
+  euclidean: "Distribute a number of pulses as evenly as possible across a repeating cycle.",
+  chaos: "A logistic map turns deterministic nonlinear dynamics into an evolving melodic sequence.",
+  shepard: "Layered sine tones crossfade across octaves to create the illusion of endless ascent."
+};
+app.innerHTML = `
+  <main class="shell">
+    <header class="topbar"><a class="brand" href="#"><span class="brand-mark">∿</span><span>SCIENCE<span class="muted">MUSIC</span><small>ENGINE / 001</small></span></a><div class="top-meta"><span class="live-dot"></span> BROWSER AUDIO LAB <span class="divider">/</span> NO AI · NO SAMPLES</div></header>
+    <section class="hero"><div class="eyebrow">MATHEMATICS → SOUND <span>FIELD NOTES 001</span></div><h1>Hear the shape<br/>of <em>mathematics.</em></h1><p class="hero-copy">An instrument for turning mathematical structures into original sound. Every note has a reason. Every pattern has a source.</p></section>
+    <section class="lab-grid">
+      <aside class="sidebar"><div class="section-label">01 / SELECT A SYSTEM</div><nav class="mode-list">
+        <button class="mode active" data-mode="mandelbrot"><span class="mode-index">01</span><span><b>Mandelbrot</b><small>Fractal geometry</small></span><i>↗</i></button>
+        <button class="mode" data-mode="euclidean"><span class="mode-index">02</span><span><b>Euclidean</b><small>Rhythm mathematics</small></span><i>↗</i></button>
+        <button class="mode" data-mode="chaos"><span class="mode-index">03</span><span><b>Chaos map</b><small>Nonlinear dynamics</small></span><i>↗</i></button>
+        <button class="mode" data-mode="shepard"><span class="mode-index">04</span><span><b>Shepard tone</b><small>Auditory illusion</small></span><i>↗</i></button>
+      </nav><div class="sidebar-note"><span class="note-symbol">ⓘ</span><p>Generated entirely in your browser with the Web Audio API. No audio files are downloaded.</p></div></aside>
+      <section class="workbench"><div class="workbench-head"><div><div class="section-label">02 / EXPERIMENT</div><h2 id="mode-title">Mandelbrot explorer</h2><p id="mode-description">${descriptions.mandelbrot}</p></div><span class="tag">PURE ALGORITHM</span></div>
+        <div class="visual-panel"><div class="visual-top"><span>SEQUENCE FIELD</span><span id="visual-meta">64 STEPS · 8 BARS</span></div><canvas id="viz" width="900" height="280" aria-label="Visualization of the generated mathematical sequence"></canvas><div class="visual-legend"><span><i class="legend-line"></i> MATHEMATICAL OUTPUT</span><span id="value-readout">AWAITING GENERATION</span></div></div>
+        <div class="controls"><div class="section-label">03 / PARAMETERS</div><div class="control-grid">
+          <label>Tempo <output id="bpm-value">108 BPM</output><input id="bpm" type="range" min="60" max="160" value="108"/></label>
+          <label>Complexity <output id="complexity-value">55%</output><input id="complexity" type="range" min="10" max="100" value="55"/></label>
+          <label>Root note<select id="root"><option value="60">C</option><option value="62">D</option><option value="64">E</option><option value="65">F</option><option value="67">G</option><option value="69">A</option><option value="71">B</option></select></label>
+          <label>Harmonic color<select id="scale"><option>Lydian</option><option>Major</option><option>Minor</option><option>Pentatonic</option></select></label>
+        </div><div class="seed-row"><span>DETERMINISTIC SEED</span><code id="seed-value">0.314159</code><button id="random-seed" class="text-button">↻ NEW SEED</button></div></div>
+        <div class="transport"><div class="transport-left"><button id="play" class="play-button"><span>▶</span> PLAY EXPERIMENT</button><button id="stop" class="stop-button" disabled>STOP</button></div><div class="transport-status"><span class="status-light" id="status-light"></span><span id="status">READY TO GENERATE</span></div></div>
+      </section>
+    </section>
+    <footer><span>SCIENCE MUSIC ENGINE <span class="muted">· MATHEMATICS LAB</span></span><span>BUILT WITH WEB AUDIO <span class="muted">· V1.0.0</span></span></footer>
+  </main>`;
+const $ = <T extends HTMLElement>(selector: string) => app.querySelector<T>(selector)!;
+const canvas = $("#viz") as HTMLCanvasElement;
+const ctx = canvas.getContext("2d")!;
+function options() { return { bpm: Number(($("#bpm") as HTMLInputElement).value), complexity: Number(($("#complexity") as HTMLInputElement).value) / 100, root: Number(($("#root") as HTMLSelectElement).value), scale: ($("#scale") as HTMLSelectElement).value, seed: currentSeed }; }
+function render() {
+  const comp = generateComposition(mode, options());
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = "#0d151e"; ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = "rgba(143,170,190,.12)"; ctx.lineWidth = 1;
+  for (let y = 35; y < h; y += 42) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+  const values = comp.values;
+  if (mode === "euclidean") {
+    const cx = w/2, cy = h/2, radius = 90;
+    ctx.strokeStyle = "rgba(128,190,177,.28)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx,cy,radius,0,Math.PI*2); ctx.stroke();
+    values.forEach((v,i) => { const a = i/values.length*Math.PI*2-Math.PI/2; const r = v ? radius+20 : radius+5; ctx.beginPath(); ctx.arc(cx+Math.cos(a)*r,cy+Math.sin(a)*r,v?5:2,0,Math.PI*2); ctx.fillStyle = v?"#8bc9b6":"#344652"; ctx.fill(); });
+  } else {
+    const gradient = ctx.createLinearGradient(0,0,w,0); gradient.addColorStop(0,"#64b5a4"); gradient.addColorStop(1,"#b7a2df");
+    ctx.beginPath();
+    values.forEach((v,i) => { const x=i/(values.length-1)*w; const y=h-30-v*(h-65); if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y); });
+    ctx.strokeStyle=gradient;ctx.lineWidth=2.5;ctx.stroke();
+    values.forEach((v,i)=>{if(i%4===0){const x=i/(values.length-1)*w,y=h-30-v*(h-65);ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);ctx.fillStyle="#b7a2df";ctx.fill();}});
+  }
+  $("#visual-meta").textContent = `${values.length} STEPS · 8 BARS`;
+  $("#value-readout").textContent = `MIN ${Math.min(...values).toFixed(3)}  /  MAX ${Math.max(...values).toFixed(3)}`;
+}
+function setMode(next: Mode) {
+  mode = next;
+  app.querySelectorAll<HTMLButtonElement>(".mode").forEach(b=>b.classList.toggle("active",b.dataset.mode===mode));
+  $("#mode-title").textContent=names[mode];$("#mode-description").textContent=descriptions[mode];render();
+}
+app.querySelectorAll<HTMLButtonElement>(".mode").forEach(b=>b.addEventListener("click",()=>setMode(b.dataset.mode as Mode)));
+["bpm","complexity","root","scale"].forEach(id=>$(`#${id}`).addEventListener("input",()=>{
+  if(id==="bpm")$("#bpm-value").textContent=( $("#bpm") as HTMLInputElement).value+" BPM";
+  if(id==="complexity")$("#complexity-value").textContent=( $("#complexity") as HTMLInputElement).value+"%";
+  render();
+}));
+$("#random-seed").addEventListener("click",()=>{currentSeed=Number(Math.random().toFixed(6));$("#seed-value").textContent=currentSeed.toFixed(6);render();});
+$("#play").addEventListener("click",async()=>{
+  const comp=generateComposition(mode,options());
+  try { await player.play(comp); playing=true; $("#status").textContent="PLAYING · LOOPING 8-BAR SEQUENCE";$("#status-light").classList.add("on");($("#play") as HTMLButtonElement).disabled=true;($("#stop") as HTMLButtonElement).disabled=false; }
+  catch(error){$("#status").textContent="AUDIO COULD NOT START";console.error(error);}
+});
+$("#stop").addEventListener("click",()=>{player.stop();playing=false;$("#status").textContent="STOPPED";$("#status-light").classList.remove("on");($("#play") as HTMLButtonElement).disabled=false;($("#stop") as HTMLButtonElement).disabled=true;});
+window.addEventListener("beforeunload",()=>player.stop());
+render();
