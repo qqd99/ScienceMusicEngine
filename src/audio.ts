@@ -175,6 +175,12 @@ export class MusicPlayer {
     this.schedule();
     window.setTimeout(() => oldMaster?.disconnect(), 220);
   }
+  setVolume(volume: number): void {
+    if (!this.context || !this.master) return;
+    const now = this.context.currentTime;
+    this.master.gain.cancelScheduledValues(now);
+    this.master.gain.setTargetAtTime(Math.max(0, Math.min(1.5, volume)), now, 0.025);
+  }
   getProgress(): number {
     const ctx = this.context, comp = this.composition;
     if (!ctx || !comp || !this.playing || comp.duration <= 0) return 0;
