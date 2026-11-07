@@ -154,7 +154,7 @@ export function generateComposition(mode: Mode, options: {
       [0, 1, 2, 3, 4, 5, 6, 7], // 5: climax begins
       [0, 1, 2, 3, 4, 5, 6, 7], // 6: sustain the climax
       [0, 3, 6],       // 7: release
-      [0, 4, 7]        // 8: final cadence
+      [0, 4]          // 8: final cadence
     ];
     const sectionGain = [0.48, 0.58, 0.68, 0.78, 1.0, 0.94, 0.62, 0.42];
     // Replace the unstructured data-to-note stream with a deliberate lead line.
