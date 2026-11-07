@@ -10,6 +10,46 @@ export const DEFAULT_INSTRUMENTS: InstrumentSettings = {
   piano: true, analog: false, plucked: false, cinematicBass: true, atmosphere: true
 };
 
+function eventsForInstruments(composition: Composition, instruments: InstrumentSettings): NoteEvent[] {
+  const events = [...composition.events];
+  const lead = composition.events.filter(event => (event.voice ?? "lead") === "lead");
+  if (!lead.length) return events;
+  const hasBass = events.some(event => event.voice === "bass");
+  const hasPads = events.some(event => event.voice === "pad");
+  const beat = composition.duration / 32;
+
+  // If arrangement is disabled, derive deterministic support notes from the
+  // mathematical lead. Never substitute random pitches.
+  if (instruments.cinematicBass && !hasBass) {
+    for (let bar = 0; bar < 8; bar++) {
+      const time = bar * beat * 4;
+      const source = lead.reduce((best, event) =>
+        Math.abs(event.time - time) < Math.abs(best.time - time) ? event : best, lead[0]);
+      events.push({
+        time, duration: beat * 1.65, frequency: source.frequency * 0.5,
+        velocity: Math.max(0.12, source.velocity * 0.42), waveform: "triangle",
+        pan: -0.08, voice: "bass"
+      });
+    }
+  }
+  if (instruments.atmosphere && !hasPads) {
+    for (let section = 0; section < 4; section++) {
+      const time = section * composition.duration / 4;
+      const source = lead.reduce((best, event) =>
+        Math.abs(event.time - time) < Math.abs(best.time - time) ? event : best, lead[0]);
+      for (const [semitones, pan] of [[0, -0.3], [4, 0], [7, 0.3], [11, 0.12]] as const) {
+        events.push({
+          time, duration: composition.duration / 4 * 0.94,
+          frequency: source.frequency * Math.pow(2, semitones / 12),
+          velocity: Math.max(0.035, source.velocity * 0.12),
+          waveform: "sine", pan, voice: "pad"
+        });
+      }
+    }
+  }
+  return events.sort((a, b) => a.time - b.time);
+}
+
 function scheduleInstrumentLayer(
   context: BaseAudioContext,
   event: NoteEvent,
@@ -143,6 +183,7 @@ export class MusicPlayer {
   private cycleStart = 0;
   private cursor = 0;
   private composition: Composition | null = null;
+  private playbackEvents: NoteEvent[] = [];
   private master: GainNode | null = null;
   private compressor: DynamicsCompressorNode | null = null;
   private instruments: InstrumentSettings = { ...DEFAULT_INSTRUMENTS };
@@ -154,6 +195,7 @@ export class MusicPlayer {
     const ctx = this.context;
     this.composition = composition;
     this.instruments = { ...instruments };
+    this.playbackEvents = eventsForInstruments(composition, this.instruments);
     this.master = ctx.createGain();
     this.master.gain.value = Math.max(0, Math.min(1.5, volume));
     this.compressor = ctx.createDynamicsCompressor();
@@ -178,14 +220,14 @@ export class MusicPlayer {
       this.cycleStart += comp.duration;
       this.cursor = 0;
     }
-    while (this.cursor < comp.events.length) {
-      const event = comp.events[this.cursor];
+    while (this.cursor < this.playbackEvents.length) {
+      const event = this.playbackEvents[this.cursor];
       const at = this.cycleStart + event.time;
       if (at > horizon) break;
       if (at >= ctx.currentTime - 0.03) this.playNote(event, at);
       this.cursor++;
     }
-    if (this.cursor >= comp.events.length && ctx.currentTime >= this.cycleStart + comp.duration - 0.18) {
+    if (this.cursor >= this.playbackEvents.length && ctx.currentTime >= this.cycleStart + comp.duration - 0.18) {
       this.cycleStart += comp.duration;
       this.cursor = 0;
     }
@@ -199,12 +241,14 @@ export class MusicPlayer {
       this.active.add(drum);
       return;
     }
+    const dedicatedEnabled = Object.values(this.instruments).some(Boolean);
     for (const instrument of Object.keys(this.instruments) as (keyof InstrumentSettings)[]) {
       if (!this.instruments[instrument] || this.active.size >= 64) continue;
       let layer!: AudioScheduledSourceNode;
       const scheduled = scheduleInstrumentLayer(ctx, event, instrument, at, master, source => this.active.delete(source));
       if (scheduled) { layer = scheduled; this.active.add(layer); }
     }
+    if (dedicatedEnabled) return;
     const osc = ctx.createOscillator();
     const rich = this.composition?.richInstruments ?? true;
     const shimmer = rich && (event.voice ?? "lead") === "lead" ? ctx.createOscillator() : null;
@@ -261,10 +305,11 @@ export class MusicPlayer {
     this.master = nextMaster;
     this.composition = composition;
     this.instruments = { ...instruments };
+    this.playbackEvents = eventsForInstruments(composition, this.instruments);
     this.cycleStart = now - phase * composition.duration;
     const elapsedInCycle = phase * composition.duration;
-    this.cursor = composition.events.findIndex(event => event.time >= elapsedInCycle + 0.025);
-    if (this.cursor < 0) this.cursor = composition.events.length;
+    this.cursor = this.playbackEvents.findIndex(event => event.time >= elapsedInCycle + 0.025);
+    if (this.cursor < 0) this.cursor = this.playbackEvents.length;
     this.schedule();
     window.setTimeout(() => oldMaster?.disconnect(), 220);
   }
@@ -315,7 +360,9 @@ export async function renderCompositionWav(composition: Composition, volume = 1.
   compressor.release.value = 0.22;
   master.connect(compressor).connect(offline.destination);
 
-  for (const event of composition.events) {
+  const dedicatedEnabled = Object.values(instruments).some(Boolean);
+  const playbackEvents = eventsForInstruments(composition, instruments);
+  for (const event of playbackEvents) {
     const voice = event.voice ?? "lead";
     const at = Math.max(0, event.time);
     const end = Math.min(composition.duration + tailSeconds, at + Math.max(0.04, event.duration));
@@ -328,6 +375,7 @@ export async function renderCompositionWav(composition: Composition, volume = 1.
     for (const instrument of Object.keys(instruments) as (keyof InstrumentSettings)[]) {
       if (instruments[instrument]) scheduleInstrumentLayer(offline, event, instrument, at, master);
     }
+    if (dedicatedEnabled) continue;
     const oscillator = offline.createOscillator();
     const filter = offline.createBiquadFilter();
     const gain = offline.createGain();
