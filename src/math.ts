@@ -15,6 +15,7 @@ export interface Composition {
   label: string;
   richInstruments: boolean;
   musicalArrangement: boolean;
+  musicalExpression: boolean;
 }
 const SCALES: Record<string, number[]> = {
   "Lydian": [0, 2, 4, 6, 7, 9, 11],
@@ -56,7 +57,7 @@ export function logisticSequence(seed: number, r: number, count: number): number
 }
 export function generateComposition(mode: Mode, options: {
   bpm?: number; root?: number; scale?: string; complexity?: number; seed?: number;
-  richInstruments?: boolean; musicalArrangement?: boolean;
+  richInstruments?: boolean; musicalArrangement?: boolean; musicalExpression?: boolean;
 } = {}): Composition {
   const bpm = clamp(options.bpm ?? 108, 45, 180);
   const root = options.root ?? 60;
@@ -65,6 +66,7 @@ export function generateComposition(mode: Mode, options: {
   const seed = options.seed ?? 0.314159;
   const richInstruments = options.richInstruments ?? true;
   const musicalArrangement = options.musicalArrangement ?? true;
+  const musicalExpression = options.musicalExpression ?? true;
   const beat = 60 / bpm;
   const bars = 8;
   const steps = bars * 8;
@@ -130,6 +132,44 @@ export function generateComposition(mode: Mode, options: {
       }
     }
   }
+  // Musical expression is a separate, switchable performance layer.
+  if (musicalExpression) {
+    const leadEvents = events.filter(event => event.voice === "lead");
+    const dynamicArc = [0.68, 0.78, 0.9, 1.08, 1.0, 0.9, 0.78, 0.62];
+    for (const event of leadEvents) {
+      const bar = Math.min(7, Math.floor(event.time / (4 * beat)));
+      event.velocity = clamp(event.velocity * dynamicArc[bar], 0.035, 0.96);
+      if ((bar === 1 || bar === 3 || bar === 5 || bar === 6) && event.velocity > 0.16 && (Math.round(event.time / (beat / 2)) % 4 === 0)) {
+        events.push({
+          time: event.time + beat * 0.75,
+          duration: event.duration * 0.52,
+          frequency: event.frequency * 1.5,
+          velocity: event.velocity * 0.22,
+          waveform: "sine",
+          pan: clamp(event.pan * -0.7, -0.8, 0.8),
+          voice: "lead"
+        });
+      }
+    }
+    const scaleNotesForFills = SCALES[scale] ?? SCALES.Lydian;
+    const tonic = root + 12;
+    // Ascending pickups at the end of bars 4 and 8 resolve to the tonic.
+    for (const bar of [3, 7]) {
+      const start = (bar * 4 + 3) * beat;
+      [2, 4, 6, 0].forEach((degree, index) => {
+        const semitone = degree === 0 ? 12 : scaleNotesForFills[degree % scaleNotesForFills.length];
+        events.push({
+          time: start + index * beat * 0.22,
+          duration: beat * (index === 3 ? 0.62 : 0.2),
+          frequency: midiHz(tonic + semitone),
+          velocity: index === 3 ? 0.48 : 0.25 + index * 0.045,
+          waveform: "triangle",
+          pan: (index - 1.5) * 0.16,
+          voice: "lead"
+        });
+      });
+    }
+  }
   // Optional harmonic foundation: four two-bar chords and bass pulses.
   if (musicalArrangement) {
   const scaleNotes = SCALES[scale] ?? SCALES.Lydian;
@@ -158,5 +198,5 @@ export function generateComposition(mode: Mode, options: {
   }
   }
   events.sort((a, b) => a.time - b.time);
-  return { events, duration, values, label: mode, richInstruments, musicalArrangement };
+  return { events, duration, values, label: mode, richInstruments, musicalArrangement, musicalExpression };
 }
