@@ -51,6 +51,20 @@ describe("mathematical generators", () => {
     expect(rich.values).toEqual(dry.values);
     expect(rich.events).toEqual(dry.events);
   });
+  it("adds a distinct expressive performance layer when enabled", () => {
+    const plain = generateComposition("mandelbrot", { seed: 0.314159, musicalExpression: false });
+    const expressive = generateComposition("mandelbrot", { seed: 0.314159, musicalExpression: true });
+    expect(expressive.musicalExpression).toBe(true);
+    expect(plain.musicalExpression).toBe(false);
+    expect(expressive.events.length).toBeGreaterThan(plain.events.length);
+    expect(expressive.values).toEqual(plain.values);
+    expect(expressive.events.some(event => event.time > 0 && event.voice === "lead")).toBe(true);
+  });
+  it("keeps musical expression deterministic for the same seed", () => {
+    const a = generateComposition("chaos", { seed: 0.42, musicalExpression: true });
+    const b = generateComposition("chaos", { seed: 0.42, musicalExpression: true });
+    expect(a.events).toEqual(b.events);
+  });
   it("creates bounded, repeatable compositions", () => {
     const a = generateComposition("chaos", { seed: 0.25 });
     const b = generateComposition("chaos", { seed: 0.25 });
