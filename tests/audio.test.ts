@@ -208,9 +208,9 @@ describe("procedural instrument controls", () => {
     const secondPhrase = session.prepareThrough(8);
     expect(session.getDecision(1)).not.toBeNull();
     expect(session.prepareThrough(8)).toEqual([]);
-    const rest = session.prepareThrough(32);
+    const rest = session.prepareThrough(64);
     const incremental = [...firstPhrase, ...secondPhrase, ...rest];
-    expect(incremental).toEqual(applyEnsembleConductor(events, 32, true, instruments));
+    expect(incremental).toEqual(applyEnsembleConductor(events, 64, true, instruments));
   });
 
   it("keeps at most two supporting roles active and leaves unusable melodic gaps silent", () => {

@@ -83,9 +83,9 @@ describe("mathematical generators", () => {
     const at = (seconds: number) => lead.find(event => Math.abs(event.time - seconds) < 1e-8)!;
     const opening = [at(0), at(1), at(2), at(3)];
     const reprise = [at(24), at(25), at(26), at(27)];
-    expect(reprise.slice(0, 3).map(note => note.frequency))
-      .toEqual(opening.slice(0, 3).map(note => note.frequency));
-    expect(reprise[3].frequency).toBe(440 * Math.pow(2, (72 - 69) / 12));
+    expect(reprise.map(note => note.frequency))
+      .toEqual(opening.map(note => note.frequency));
+    expect(at(30).frequency).toBeCloseTo(440 * Math.pow(2, (72 - 69) / 12), 8);
   });
   it("makes the four-bar climax denser and higher than the opening", () => {
     const composition = generateComposition("chaos", { bpm: 120, musicalExpression: true });

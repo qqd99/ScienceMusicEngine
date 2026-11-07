@@ -357,9 +357,10 @@ function scoreConductorRoles(
     );
   }
   if (has("percussion")) {
+    const climaxPhrase = analysis.phraseIndex === 4 || analysis.phraseIndex === 5 ? 0.2 : 0;
     add("percussion",
       0.16 + 0.22 * analysis.energy + 0.18 * analysis.offbeatRatio +
-      0.24 * building + 0.12 * middlePhrase - 0.24 * densityPressure,
+      0.24 * building + 0.12 * middlePhrase + climaxPhrase - 0.24 * densityPressure,
       0.46
     );
   }
