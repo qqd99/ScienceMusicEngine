@@ -7,7 +7,6 @@ export interface NoteEvent {
   waveform: OscillatorType;
   pan: number;
   voice?: "lead" | "bass" | "pad";
-  rich?: boolean;
 }
 export interface Composition {
   events: NoteEvent[];
@@ -80,7 +79,7 @@ export function generateComposition(mode: Mode, options: {
     const cadenceAccent = musicalArrangement && bar === 7 && beatInBar >= 4 ? 1.3 : 1;
     const phraseVelocity = clamp(velocity * phraseAccent * cadenceAccent, 0.08, 0.92);
     const phraseLength = length * (musicalArrangement ? (beatInBar === 0 ? 1.28 : beatInBar === 7 ? 0.68 : 1) : 1);
-    events.push({ time: step * beat / 2, duration: phraseLength * beat, frequency: midiHz(note), velocity: phraseVelocity, waveform: wave, pan: Math.sin(step * 0.37) * 0.55, voice: "lead", rich: richInstruments });
+    events.push({ time: step * beat / 2, duration: phraseLength * beat, frequency: midiHz(note), velocity: phraseVelocity, waveform: wave, pan: Math.sin(step * 0.37) * 0.55, voice: "lead" });
   };
   if (mode === "euclidean") {
     const pulses = Math.round(steps * (0.08 + complexity * 0.42));
