@@ -95,6 +95,16 @@ describe("mathematical generators", () => {
     expect(Math.min(...inBar(4).map(event => event.frequency)))
       .toBeGreaterThan(Math.min(...inBar(0).map(event => event.frequency)));
   });
+  it("returns to the tonic harmony and uses four-voice chord colors", () => {
+    const composition = generateComposition("mandelbrot", {
+      bpm: 120, root: 60, scale: "Major", musicalArrangement: true
+    });
+    const pads = composition.events.filter(event => event.voice === "pad");
+    const first = pads.filter(event => event.time === 0).map(event => Math.round(69 + 12 * Math.log2(event.frequency / 440)) % 12).sort();
+    const final = pads.filter(event => event.time === 12).map(event => Math.round(69 + 12 * Math.log2(event.frequency / 440)) % 12).sort();
+    expect(first).toEqual(final);
+    expect(pads.filter(event => event.time === 0)).toHaveLength(4);
+  });
   it("builds the bass and chord layers toward the climax, then releases", () => {
     const composition = generateComposition("mandelbrot", {
       bpm: 120, musicalArrangement: true, musicalExpression: true
