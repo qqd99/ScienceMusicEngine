@@ -37,7 +37,7 @@ app.innerHTML = `
           <label>Root note<select id="root"><option value="60">C</option><option value="62">D</option><option value="64">E</option><option value="65">F</option><option value="67">G</option><option value="69">A</option><option value="71">B</option></select></label>
           <label>Harmonic color<select id="scale"><option>Lydian</option><option>Major</option><option>Minor</option><option>Pentatonic</option></select></label>
         </div><div class="seed-row"><span>DETERMINISTIC SEED</span><code id="seed-value">0.314159</code><button id="random-seed" class="text-button">↻ NEW SEED</button></div></div>
-        <div class="transport"><div class="transport-left"><button id="play" class="play-button"><span>▶</span> PLAY EXPERIMENT</button><button id="stop" class="stop-button" disabled>STOP</button></div><div class="transport-status"><span class="status-light" id="status-light"></span><span id="status">READY TO GENERATE</span></div></div>
+        <div class="transport"><div class="transport-left"><button id="play" class="play-button"><span>▶</span> PLAY EXPERIMENT</button></div><div class="transport-status"><span class="status-light" id="status-light"></span><span id="status">READY TO GENERATE</span></div></div>
       </section>
     </section>
     <footer><span>SCIENCE MUSIC ENGINE <span class="muted">· MATHEMATICS LAB</span></span><span>BUILT WITH WEB AUDIO <span class="muted">· V1.0.0</span></span></footer>
