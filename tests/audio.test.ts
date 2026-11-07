@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_INSTRUMENTS, hasDedicatedInstruments, resolveInstrumentEvents } from "../src/audio";
+import { DEFAULT_INSTRUMENTS, DEFAULT_INSTRUMENT_LEVELS, DEFAULT_SOUND_PROFILE, hasDedicatedInstruments, resolveInstrumentEvents } from "../src/audio";
 import { generateComposition } from "../src/math";
 
 describe("procedural instrument controls", () => {
@@ -55,6 +55,17 @@ describe("procedural instrument controls", () => {
     });
     expect(resolved.filter(event => event.voice === "bass")).toEqual(actualBass);
     expect(resolved.filter(event => event.voice === "pad")).toEqual(actualPads);
+  });
+
+  it("defaults to the hybrid cinematic sound profile", () => {
+    expect(DEFAULT_SOUND_PROFILE).toBe("hybrid-cinematic");
+  });
+
+  it("provides independent level values for all five instruments", () => {
+    expect(Object.keys(DEFAULT_INSTRUMENT_LEVELS).sort()).toEqual([
+      "analog", "atmosphere", "cinematicBass", "piano", "plucked"
+    ]);
+    expect(Object.values(DEFAULT_INSTRUMENT_LEVELS).every(level => level > 0 && level <= 1.5)).toBe(true);
   });
 
   it("allows a session to change one instrument without changing the defaults", () => {
