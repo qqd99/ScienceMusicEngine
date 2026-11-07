@@ -63,6 +63,31 @@ export class MusicPlayer {
     osc.start(at);
     osc.stop(at + event.duration + 0.03);
   }
+  update(composition: Composition, volume = 0.7): void {
+    if (!this.playing || !this.context) return;
+    const ctx = this.context;
+    const now = ctx.currentTime;
+    const oldMaster = this.master;
+    const nextMaster = ctx.createGain();
+    nextMaster.gain.setValueAtTime(0.0001, now);
+    nextMaster.gain.exponentialRampToValueAtTime(Math.max(0.0002, Math.min(1, volume)), now + 0.12);
+    nextMaster.connect(ctx.destination);
+    oldMaster?.gain.cancelScheduledValues(now);
+    oldMaster?.gain.setTargetAtTime(0.0001, now, 0.035);
+    this.master = nextMaster;
+    this.composition = composition;
+    this.cycleStart = now + 0.13;
+    this.cursor = 0;
+    this.schedule();
+    window.setTimeout(() => oldMaster?.disconnect(), 220);
+  }
+  getProgress(): number {
+    const ctx = this.context, comp = this.composition;
+    if (!ctx || !comp || !this.playing || comp.duration <= 0) return 0;
+    const elapsed = ctx.currentTime - this.cycleStart;
+    if (elapsed < 0) return 0;
+    return (elapsed % comp.duration) / comp.duration;
+  }
   stop(): void {
     this.playing = false;
     if (this.timer !== null) window.clearInterval(this.timer);
