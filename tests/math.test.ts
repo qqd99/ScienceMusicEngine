@@ -114,8 +114,8 @@ describe("mathematical generators", () => {
     const bassAtBar = (bar: number) => bass.find(event => Math.abs(event.time - bar * 2) < 1e-8)!;
     expect(bassAtBar(4).velocity).toBeGreaterThan(bassAtBar(0).velocity);
     expect(bassAtBar(7).velocity).toBeLessThan(bassAtBar(4).velocity);
-    expect(pads[6].velocity).toBeGreaterThan(pads[0].velocity);
-    expect(pads[9].velocity).toBeLessThan(pads[6].velocity);
+    expect(pads[10].velocity).toBeGreaterThan(pads[0].velocity);
+    expect(pads[14].velocity).toBeLessThan(pads[10].velocity);
   });
   it("adds a sparse drum part that becomes denser at the climax and clears for the ending", () => {
     const composition = generateComposition("chaos", {
