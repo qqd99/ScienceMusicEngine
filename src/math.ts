@@ -229,12 +229,22 @@ export function generateComposition(mode: Mode, options: {
       const arc = musicalExpression ? accompanimentArc[absoluteBar] : 1;
       events.push({ time: bassTime, duration: 1.65 * beat, frequency: midiHz(chordRoot - 12), velocity: 0.24 * arc, waveform: "triangle", pan: -0.08, voice: "bass" });
       events.push({ time: bassTime + 2 * beat, duration: 1.25 * beat, frequency: midiHz(chordRoot - 12), velocity: 0.15 * arc, waveform: "triangle", pan: 0.08, voice: "bass" });
-      if (bar === 1 && section < 3) {
-        const nextRoot = chordRoots[section + 1] ?? chordRoot;
-        events.push({ time: bassTime + 3.5 * beat, duration: 0.38 * beat, frequency: midiHz(nextRoot - 12), velocity: 0.11 * arc, waveform: "triangle", pan: 0, voice: "bass" });
-      }
     }
   }
+    // Bass approaches the next chord just before each two-bar harmonic change.
+    for (let section = 0; section < 3; section++) {
+      const bar = section * 2 + 1;
+      const arc = musicalExpression ? accompanimentArc[bar] : 1;
+      events.push({
+        time: (section + 2) * 8 * beat - 0.5 * beat,
+        duration: 0.38 * beat,
+        frequency: midiHz(chordRoots[section + 1] - 12),
+        velocity: 0.11 * arc,
+        waveform: "triangle",
+        pan: 0,
+        voice: "bass"
+      });
+    }
     if (musicalExpression) {
       const drumBars = [
         [{ slot: 0, kind: "kick" as const, level: 0.34 }],
