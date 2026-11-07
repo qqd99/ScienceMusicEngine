@@ -48,7 +48,8 @@ export class MusicPlayer {
     const ctx = this.context, master = this.master;
     if (!ctx || !master || this.active.size >= 32) return;
     const osc = ctx.createOscillator();
-    const shimmer = (event.voice ?? "lead") === "lead" ? ctx.createOscillator() : null;
+    const rich = this.composition?.richInstruments ?? true;
+    const shimmer = rich && (event.voice ?? "lead") === "lead" ? ctx.createOscillator() : null;
     const gain = ctx.createGain();
     const filter = ctx.createBiquadFilter();
     const pan = ctx.createStereoPanner();
@@ -64,7 +65,7 @@ export class MusicPlayer {
       shimmer.frequency.setValueAtTime(event.frequency * 2.003, at);
       shimmer.detune.setValueAtTime(-4, at);
       const overtoneGain = ctx.createGain();
-      overtoneGain.gain.value = 0.19;
+      overtoneGain.gain.value = 0.48;
       shimmer.connect(overtoneGain).connect(filter);
       shimmer.start(at);
       shimmer.stop(at + event.duration + 0.03);
@@ -72,8 +73,8 @@ export class MusicPlayer {
       shimmer.onended = () => { this.active.delete(shimmer); shimmer.disconnect(); overtoneGain.disconnect(); };
     }
     filter.type = "lowpass";
-    filter.frequency.setValueAtTime(voice === "pad" ? 1900 : voice === "bass" ? 520 : 6200, at);
-    filter.Q.setValueAtTime(voice === "lead" ? 0.65 : 0.35, at);
+    filter.frequency.setValueAtTime(voice === "pad" ? 2600 : voice === "bass" ? 680 : rich ? 9000 : 2400, at);
+    filter.Q.setValueAtTime(rich && voice === "lead" ? 1.35 : 0.35, at);
     gain.gain.setValueAtTime(0.0001, at);
     gain.gain.exponentialRampToValueAtTime(peak, at + attack);
     gain.gain.setValueAtTime(peak, holdEnd);
@@ -154,7 +155,7 @@ export async function renderCompositionWav(composition: Composition): Promise<Bl
     oscillator.type = voice === "bass" ? "triangle" : voice === "pad" ? "sine" : event.waveform;
     oscillator.frequency.setValueAtTime(event.frequency, at);
     filter.type = "lowpass";
-    filter.frequency.setValueAtTime(voice === "pad" ? 1900 : voice === "bass" ? 520 : 6200, at);
+    filter.frequency.setValueAtTime(voice === "pad" ? 2600 : voice === "bass" ? 680 : composition.richInstruments ? 9000 : 2400, at);
     const attack = voice === "pad" ? Math.min(0.55, duration * 0.3) : voice === "bass" ? 0.018 : 0.025;
     const release = voice === "pad" ? Math.min(0.7, duration * 0.35) : 0.08;
     const peak = Math.max(0.0002, event.velocity);
@@ -165,13 +166,13 @@ export async function renderCompositionWav(composition: Composition): Promise<Bl
     gain.gain.exponentialRampToValueAtTime(0.0001, end);
     pan.pan.setValueAtTime(event.pan, at);
     oscillator.connect(filter).connect(gain).connect(pan).connect(master);
-    if (voice === "lead") {
+    if (voice === "lead" && composition.richInstruments) {
       const overtone = offline.createOscillator();
       const overtoneGain = offline.createGain();
       overtone.type = "triangle";
       overtone.frequency.setValueAtTime(event.frequency * 2.003, at);
       overtone.detune.setValueAtTime(-4, at);
-      overtoneGain.gain.value = 0.19;
+      overtoneGain.gain.value = 0.48;
       overtone.connect(overtoneGain).connect(filter);
       overtone.start(at);
       overtone.stop(end + 0.03);
