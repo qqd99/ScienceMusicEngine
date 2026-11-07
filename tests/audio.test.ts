@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_INSTRUMENTS, DEFAULT_INSTRUMENT_LEVELS, DEFAULT_SOUND_PROFILE, hasDedicatedInstruments, resolveInstrumentEvents } from "../src/audio";
+import { applyEnsembleConductor, DEFAULT_INSTRUMENTS, DEFAULT_INSTRUMENT_LEVELS, DEFAULT_SOUND_PROFILE, getConductorSection, hasDedicatedInstruments, preparePlaybackEvents, resolveInstrumentEvents } from "../src/audio";
 import { generateComposition } from "../src/math";
 
 describe("procedural instrument controls", () => {
@@ -81,6 +81,62 @@ describe("procedural instrument controls", () => {
     });
     expect(events.some(event => event.voice === "answer")).toBe(false);
     expect(events.some(event => event.voice === "texture")).toBe(false);
+  });
+
+  it("maps normalized playback progress to the four conductor sections", () => {
+    expect(getConductorSection(0)).toBe("beginning");
+    expect(getConductorSection(0.249)).toBe("beginning");
+    expect(getConductorSection(0.25)).toBe("development");
+    expect(getConductorSection(0.5)).toBe("climax");
+    expect(getConductorSection(0.75)).toBe("ending");
+    expect(getConductorSection(0.99)).toBe("ending");
+  });
+
+  it("stages instrument entrances, builds the climax and clears layers for the ending", () => {
+    const roles = ["lead", "answer", "texture", "bass", "pad", "percussion"] as const;
+    const events = roles.flatMap(voice => [0, 2, 4, 7].map(time => ({
+      time, duration: 0.5, frequency: 440, velocity: 0.5,
+      waveform: "sine" as OscillatorType, pan: 0, voice
+    })));
+    const conducted = applyEnsembleConductor(events, 8);
+    const find = (voice: string, time: number) =>
+      conducted.find(event => event.voice === voice && event.time === time);
+
+    expect(find("lead", 0)).toBeDefined();
+    expect(find("lead", 4)!.velocity).toBeGreaterThan(find("lead", 0)!.velocity);
+    expect(find("lead", 7)!.velocity).toBeLessThan(find("lead", 4)!.velocity);
+    expect(find("answer", 0)).toBeUndefined();
+    expect(find("answer", 2)).toBeDefined();
+    expect(find("answer", 4)!.velocity).toBeGreaterThan(find("answer", 2)!.velocity);
+    expect(find("answer", 7)).toBeUndefined();
+    expect(find("texture", 0)).toBeUndefined();
+    expect(find("texture", 2)).toBeDefined();
+    expect(find("texture", 7)).toBeUndefined();
+    expect(find("bass", 4)!.velocity).toBeGreaterThan(find("bass", 7)!.velocity);
+    expect(find("pad", 4)!.velocity).toBeGreaterThan(find("pad", 7)!.velocity);
+    expect(find("percussion", 0)).toBeUndefined();
+    expect(find("percussion", 4)).toBeDefined();
+    expect(find("percussion", 7)).toBeUndefined();
+  });
+
+  it("bypasses conductor processing when its feature toggle is off", () => {
+    const events = generateComposition("chaos", { seed: 0.271828 }).events;
+    expect(applyEnsembleConductor(events, 16, false)).toEqual(events);
+  });
+
+  it("uses one deterministic conducted event list for playback and WAV preparation", () => {
+    const composition = generateComposition("mandelbrot", {
+      seed: 0.314159, musicalArrangement: true, musicalExpression: true
+    });
+    const allInstruments = {
+      piano: true, analog: true, plucked: true, cinematicBass: true, atmosphere: true
+    };
+    const liveEvents = preparePlaybackEvents(composition, allInstruments, true);
+    const exportEvents = preparePlaybackEvents(composition, allInstruments, true);
+    expect(liveEvents).toEqual(exportEvents);
+    expect(liveEvents.some(event => event.voice === "answer")).toBe(true);
+    expect(liveEvents.some(event => event.voice === "texture")).toBe(true);
+    expect(liveEvents.some(event => event.voice === "percussion" && event.time >= composition.duration * 0.5)).toBe(true);
   });
 
   it("defaults to the hybrid cinematic sound profile", () => {
