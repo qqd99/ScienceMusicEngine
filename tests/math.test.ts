@@ -79,8 +79,8 @@ describe("mathematical generators", () => {
     });
     const lead = composition.events.filter(event => event.voice === "lead");
     const at = (seconds: number) => lead.find(event => Math.abs(event.time - seconds) < 1e-8)!;
-    const opening = [at(0), at(0.5), at(1), at(1.5)];
-    const reprise = [at(6), at(6.5), at(7), at(7.5)];
+    const opening = [at(0), at(1), at(2), at(3)];
+    const reprise = [at(12), at(13), at(14), at(15)];
     expect(reprise.slice(0, 3).map(note => note.frequency))
       .toEqual(opening.slice(0, 3).map(note => note.frequency));
     expect(reprise[3].frequency).toBe(440 * Math.pow(2, (72 - 69) / 12));
