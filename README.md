@@ -13,7 +13,9 @@ After GitHub Pages is enabled with **Settings → Pages → Source: GitHub Actio
 - **Chaos map:** logistic map dynamics mapped to melodic events.
 - **Shepard illusion:** overlapping octave layers create an endlessly rising auditory illusion.
 
-All experiments now include a deterministic harmonic arrangement layer: sustained chord pads, bass foundations and a mathematical lead. The synthesizer gives each role its own filter and envelope; no samples are used.
+All experiments include deterministic bass, chord pads and a mathematical lead, with phrase accents and data-influenced chord color. Lead voices use a subtle overtone for a fuller tone; bass and pads have separate envelopes and filters. No samples are used.
+
+Use **Export WAV** to render the current eight-bar composition offline as a stereo 16-bit, 44.1 kHz WAV file. Export does not require starting live playback.
 
 ## Run locally
 Requires Node.js 20+.
