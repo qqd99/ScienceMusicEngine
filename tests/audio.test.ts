@@ -114,6 +114,8 @@ describe("procedural instrument controls", () => {
     expect(find("texture", 7)).toBeUndefined();
     expect(find("bass", 4)!.velocity).toBeGreaterThan(find("bass", 7)!.velocity);
     expect(find("pad", 4)!.velocity).toBeGreaterThan(find("pad", 7)!.velocity);
+    expect(find("pad", 0)!.velocityEnd).toBeGreaterThan(find("pad", 0)!.velocity);
+    expect(find("pad", 4)!.velocityEnd).toBeLessThan(find("pad", 4)!.velocity);
     expect(find("percussion", 0)).toBeUndefined();
     expect(find("percussion", 4)).toBeDefined();
     expect(find("percussion", 7)).toBeUndefined();
