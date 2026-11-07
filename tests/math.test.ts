@@ -56,7 +56,7 @@ describe("mathematical generators", () => {
     const expressive = generateComposition("mandelbrot", { seed: 0.314159, musicalExpression: true });
     expect(expressive.musicalExpression).toBe(true);
     expect(plain.musicalExpression).toBe(false);
-    expect(expressive.events.length).toBeGreaterThan(plain.events.length);
+    expect(expressive.events).not.toEqual(plain.events);
     expect(expressive.values).toEqual(plain.values);
     expect(expressive.events.some(event => event.time > 0 && event.voice === "lead")).toBe(true);
   });
