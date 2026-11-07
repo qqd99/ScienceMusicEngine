@@ -32,6 +32,12 @@ describe("mathematical generators", () => {
     expect(composition.events.some(event => event.voice === "pad")).toBe(true);
     expect(composition.events.every((event, index, all) => index === 0 || all[index - 1].time <= event.time)).toBe(true);
   });
+  it("adds phrase accents and a stronger final cadence", () => {
+    const composition = generateComposition("chaos", { seed: 0.42 });
+    const lead = composition.events.filter(event => event.voice === "lead");
+    expect(lead.some(event => event.velocity > 0.5)).toBe(true);
+    expect(lead.every(event => event.duration > 0)).toBe(true);
+  });
   it("creates bounded, repeatable compositions", () => {
     const a = generateComposition("chaos", { seed: 0.25 });
     const b = generateComposition("chaos", { seed: 0.25 });
