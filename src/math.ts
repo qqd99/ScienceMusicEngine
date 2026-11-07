@@ -4,6 +4,7 @@ export interface NoteEvent {
   duration: number;
   frequency: number;
   velocity: number;
+  velocityEnd?: number;
   waveform: OscillatorType;
   pan: number;
   voice?: "lead" | "answer" | "texture" | "bass" | "pad" | "percussion";
