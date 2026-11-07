@@ -60,7 +60,8 @@ export class MusicPlayer {
   private cursor = 0;
   private composition: Composition | null = null;
   private master: GainNode | null = null;
-  async play(composition: Composition, volume = 0.7): Promise<void> {
+  private compressor: DynamicsCompressorNode | null = null;
+  async play(composition: Composition, volume = 1.15): Promise<void> {
     this.stop();
     const Context = window.AudioContext;
     this.context ??= new Context();
@@ -68,8 +69,15 @@ export class MusicPlayer {
     const ctx = this.context;
     this.composition = composition;
     this.master = ctx.createGain();
-    this.master.gain.value = Math.max(0, Math.min(1, volume));
-    this.master.connect(ctx.destination);
+    this.master.gain.value = Math.max(0, Math.min(1.5, volume));
+    this.compressor = ctx.createDynamicsCompressor();
+    this.compressor.threshold.value = -14;
+    this.compressor.knee.value = 18;
+    this.compressor.ratio.value = 8;
+    this.compressor.attack.value = 0.004;
+    this.compressor.release.value = 0.22;
+    this.compressor.connect(ctx.destination);
+    this.master.connect(this.compressor);
     this.cycleStart = ctx.currentTime + 0.08;
     this.cursor = 0;
     this.playing = true;
@@ -144,7 +152,7 @@ export class MusicPlayer {
     osc.start(at);
     osc.stop(at + event.duration + 0.03);
   }
-  update(composition: Composition, volume = 0.7): void {
+  update(composition: Composition, volume = 1.15): void {
     if (!this.playing || !this.context) return;
     const ctx = this.context;
     const now = ctx.currentTime;
@@ -154,8 +162,8 @@ export class MusicPlayer {
     const oldMaster = this.master;
     const nextMaster = ctx.createGain();
     nextMaster.gain.setValueAtTime(0.0001, now);
-    nextMaster.gain.exponentialRampToValueAtTime(Math.max(0.0002, Math.min(1, volume)), now + 0.12);
-    nextMaster.connect(ctx.destination);
+    nextMaster.gain.exponentialRampToValueAtTime(Math.max(0.0002, Math.min(1.5, volume)), now + 0.12);
+    nextMaster.connect(this.compressor ?? ctx.destination);
     oldMaster?.gain.cancelScheduledValues(now);
     oldMaster?.gain.setTargetAtTime(0.0001, now, 0.035);
     this.master = nextMaster;
@@ -186,19 +194,27 @@ export class MusicPlayer {
     const oldMaster = this.master;
     oldMaster?.gain.setTargetAtTime(0, now, 0.025);
     this.master = null;
-    window.setTimeout(() => oldMaster?.disconnect(), 80);
+    const compressor = this.compressor;
+    this.compressor = null;
+    window.setTimeout(() => { oldMaster?.disconnect(); compressor?.disconnect(); }, 100);
   }
   get isPlaying(): boolean { return this.playing; }
 }
 
-export async function renderCompositionWav(composition: Composition): Promise<Blob> {
+export async function renderCompositionWav(composition: Composition, volume = 1.15): Promise<Blob> {
   const sampleRate = 44100;
   const tailSeconds = 1.25;
   const frameCount = Math.ceil((composition.duration + tailSeconds) * sampleRate);
   const offline = new OfflineAudioContext(2, frameCount, sampleRate);
   const master = offline.createGain();
-  master.gain.value = 0.72;
-  master.connect(offline.destination);
+  master.gain.value = Math.max(0, Math.min(1.5, volume));
+  const compressor = offline.createDynamicsCompressor();
+  compressor.threshold.value = -14;
+  compressor.knee.value = 18;
+  compressor.ratio.value = 8;
+  compressor.attack.value = 0.004;
+  compressor.release.value = 0.22;
+  master.connect(compressor).connect(offline.destination);
 
   for (const event of composition.events) {
     const voice = event.voice ?? "lead";
