@@ -309,7 +309,7 @@ export class MusicPlayer {
     this.master = nextMaster;
     this.composition = composition;
     this.instruments = { ...instruments };
-    this.playbackEvents = eventsForInstruments(composition, this.instruments);
+    this.playbackEvents = resolveInstrumentEvents(composition, this.instruments);
     this.cycleStart = now - phase * composition.duration;
     const elapsedInCycle = phase * composition.duration;
     this.cursor = this.playbackEvents.findIndex(event => event.time >= elapsedInCycle + 0.025);
