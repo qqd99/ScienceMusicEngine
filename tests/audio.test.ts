@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyEnsembleConductor, DEFAULT_INSTRUMENTS, DEFAULT_INSTRUMENT_LEVELS, DEFAULT_SOUND_PROFILE, getConductorSection, hasDedicatedInstruments, MASTER_OUTPUT_BOOST, MASTER_OUTPUT_BOOST_DB, preparePlaybackEvents, resolveInstrumentEvents } from "../src/audio";
+import { AdaptiveConductorSession, applyEnsembleConductor, DEFAULT_INSTRUMENTS, DEFAULT_INSTRUMENT_LEVELS, DEFAULT_SOUND_PROFILE, getConductorSection, hasDedicatedInstruments, MASTER_OUTPUT_BOOST, MASTER_OUTPUT_BOOST_DB, preparePlaybackEvents, resolveInstrumentEvents } from "../src/audio";
 import { generateComposition, type NoteEvent } from "../src/math";
 
 describe("procedural instrument controls", () => {
@@ -93,7 +93,7 @@ describe("procedural instrument controls", () => {
     expect(getConductorSection(0.99)).toBe("ending");
   });
 
-  it("selects complementary roles instead of stacking every enabled layer", () => {
+  it("adapts orchestration to phrase density, rests and changing musical energy", () => {
     const duration = 32;
     const beat = 1;
     const events: NoteEvent[] = [];
@@ -103,101 +103,118 @@ describe("procedural instrument controls", () => {
       noteDuration = 0.4,
       extras: Partial<NoteEvent> = {}
     ) => events.push({
-      time, duration: noteDuration, frequency: 440, velocity: 0.5,
+      time, duration: noteDuration, frequency: 440, velocity: 0.58,
       waveform: "sine", pan: 0, voice, ...extras
     });
 
-    // The lead has clear gaps in development and reprise, but is dense at the climax.
-    for (const [time, noteDuration] of [
-      [0, 0.5], [2, 0.5],
-      [8, 0.4], [9, 0.4], [10.5, 0.4], [11.5, 0.4],
-      [12, 0.4], [12.5, 0.4], [14, 0.4], [15, 0.4], [15.5, 0.4],
-      ...Array.from({ length: 8 }, (_, i) => [16 + i * 0.5, 0.38]),
-      ...Array.from({ length: 8 }, (_, i) => [20 + i * 0.5, 0.38]),
-      [24, 1], [26, 0.85], [28, 1], [30, 1.95]
-    ] as number[][]) add("lead", time, noteDuration);
-
-    // Bass offers many possible notes; the conductor should retain only anchors
-    // and the final approach into the tonic.
-    for (const time of [0, 2, 4, 8, 10, 16, 18, 20, 24, 28]) add("bass", time, 0.8);
-    add("bass", 23.5, 0.35);
-
-    // Four chord changes are available, but only the opening and final harmony
-    // should be sustained by pads.
-    for (const bar of [0, 2, 4, 6]) {
-      for (const [tone, pan] of [[0, -0.3], [4, 0], [7, 0.3], [11, 0.12]]) {
-        add("pad", bar * 4, 7.7, { frequency: 440 * Math.pow(2, tone / 12), pan });
-      }
+    // Phrase 1: open melody with room for harmonic support and a response.
+    for (const time of [0, 2, 4, 6]) add("lead", time, 0.5);
+    for (const time of [0, 4]) add("bass", time, 1.1);
+    for (const tone of [0, 4, 7, 11]) {
+      add("pad", 0, 7.7, { frequency: 440 * Math.pow(2, tone / 12) });
     }
+    add("answer", 0.8, 0.35);
+    add("answer", 4.8, 0.35);
+    add("texture", 1.0, 0.4);
+    add("texture", 5.0, 0.4);
 
-    add("answer", 8.55, 0.35);
-    add("answer", 16.45, 0.3);
-    add("answer", 25.1, 0.5);
-    add("texture", 13.1, 0.68);
-    add("texture", 20.1, 0.5);
+    // Phrase 2: dense melody. The conductor should reduce harmonic clutter and
+    // use only selected rhythmic support instead of adding answering melodies.
+    for (let i = 0; i < 16; i++) add("lead", 8 + i * 0.5, 0.42);
+    // Deliberately place percussion before bass at the same downbeat.
+    add("percussion", 8, 0.06, { percussionKind: "kick" });
+    add("bass", 8, 1.1);
+    add("pad", 8, 7.7);
+    add("answer", 8.45, 0.2);
+    add("texture", 8.45, 0.2);
+    add("percussion", 10, 0.06, { percussionKind: "snare" });
+    add("percussion", 12, 0.06, { percussionKind: "kick" });
+    add("bass", 12, 1.1);
+    add("percussion", 14, 0.06, { percussionKind: "snare" });
 
-    for (const [time, kind] of [
-      [12, "kick"], [14, "snare"], [15, "hat"],
-      [16, "kick"], [17, "hat"], [18, "snare"], [19, "hat"],
-      [20, "kick"], [21, "hat"], [22, "snare"], [23, "hat"]
-    ] as [number, "kick" | "snare" | "hat"][]) {
-      add("percussion", time, 0.06, { percussionKind: kind });
-    }
+    // Phrase 3: the lead opens up again. The conductor should notice the
+    // density drop and reconsider which supporting role is useful.
+    for (const time of [16, 18, 20, 22]) add("lead", time, 0.5);
+    for (const time of [16, 20]) add("bass", time, 1.1);
+    for (const tone of [0, 4, 7]) add("pad", 16, 7.7, { frequency: 440 * Math.pow(2, tone / 12) });
+    add("answer", 16.8, 0.35);
+    add("texture", 17.0, 0.4);
+
+    // Phrase 4: spacious reprise and cadence.
+    for (const time of [24, 26, 28, 30]) add("lead", time, 0.5);
+    for (const time of [24, 28]) add("bass", time, 1.1);
+    for (const tone of [0, 4, 7]) add("pad", 24, 7.7, { frequency: 440 * Math.pow(2, tone / 12) });
+    add("answer", 24.8, 0.35);
+    add("texture", 25.0, 0.4);
 
     const allInstruments = {
       piano: true, analog: true, plucked: true, cinematicBass: true, atmosphere: true
     };
-    const conducted = applyEnsembleConductor(events, duration, true, allInstruments);
+    const session = new AdaptiveConductorSession(events, duration, allInstruments, true);
+    const conducted = session.prepareAll();
+    const decisions = [0, 1, 2, 3].map(index => session.getDecision(index)!);
+
+    expect(decisions[0].analysis.density).toBeLessThan(decisions[1].analysis.density);
+    expect(decisions[0].analysis.gapRatio).toBeGreaterThan(decisions[1].analysis.gapRatio);
+    expect(decisions[1].analysis.densityChange).toBeGreaterThan(0);
+    expect(decisions[2].analysis.densityChange).toBeLessThan(0);
+    expect(decisions.every(decision => decision.roles.length <= 2)).toBe(true);
+    expect(decisions[0].roles).not.toEqual(decisions[1].roles);
+    expect(decisions[1].roles).toContain("percussion");
+    expect(decisions[2].roles).toContain("answer");
+
     const find = (voice: string, time: number) =>
       conducted.find(event => event.voice === voice && Math.abs(event.time - time) < 0.001);
-
-    expect(find("lead", 0)).toBeDefined();
-    expect(find("pad", 0)).toBeDefined();
-    expect(find("pad", 8)).toBeUndefined();
-    expect(find("pad", 16)).toBeUndefined();
-    expect(find("pad", 24)).toBeDefined();
-    expect(find("bass", 0)).toBeDefined();
-    expect(find("bass", 2)).toBeUndefined();
-    expect(find("bass", 8)).toBeDefined();
-    expect(find("bass", 16)).toBeDefined();
-    expect(find("bass", 23.5)).toBeDefined();
-    expect(find("answer", 8.55)).toBeDefined();
-    expect(find("answer", 16.45)).toBeUndefined();
-    expect(find("answer", 25.1)).toBeDefined();
-    expect(find("texture", 13.1)).toBeDefined();
-    expect(find("texture", 20.1)).toBeUndefined();
-    expect(find("percussion", 12)).toBeDefined();
-    expect(find("percussion", 16)).toBeUndefined(); // bass owns the downbeat
-    expect(find("percussion", 18)).toBeDefined();
-    expect(find("percussion", 20)).toBeDefined();
-    expect(find("percussion", 22)).toBeDefined();
-    expect(find("percussion", 0)).toBeUndefined();
-
-    // At any instant there are at most two supporting roles beneath the lead.
-    const sampleTimes = conducted.map(event => event.time + Math.min(event.duration / 2, 0.02));
-    for (const time of sampleTimes) {
-      const activeSupport = new Set(conducted
-        .filter(event => event.time <= time && event.time + event.duration > time)
-        .map(event => event.voice ?? "lead")
-        .filter(voice => voice !== "lead"));
-      expect(activeSupport.size).toBeLessThanOrEqual(2);
-    }
-    expect(find("pad", 0)!.velocityEnd).toBeLessThan(find("pad", 0)!.velocity);
+    expect(find("lead", 8)).toBeDefined();
+    expect(find("answer", 8.45)).toBeUndefined(); // Dense melody leaves no answer space.
+    expect(find("texture", 8.45)).toBeUndefined();
+    expect(find("percussion", 8)).toBeUndefined(); // Bass owns the downbeat.
+    expect(find("percussion", 10)).toBeDefined();
+    expect(conducted.every(event => event.voice === "lead" || decisions.some(decision =>
+      decision.roles.includes(event.voice as "answer" | "texture" | "bass" | "pad" | "percussion")
+    ))).toBe(true);
   });
 
-  it("lets bass own a downbeat even when percussion appears first in the event list", () => {
+  it("prepares adaptive decisions phrase by phrase without duplicate events", () => {
     const events: NoteEvent[] = [
-      { time: 16, duration: 0.06, frequency: 90, velocity: 0.4, waveform: "sine", pan: 0, voice: "percussion", percussionKind: "kick" },
-      { time: 16, duration: 0.8, frequency: 55, velocity: 0.5, waveform: "triangle", pan: 0, voice: "bass" },
-      { time: 16, duration: 0.4, frequency: 440, velocity: 0.5, waveform: "sine", pan: 0, voice: "lead" },
-      { time: 18, duration: 0.06, frequency: 180, velocity: 0.3, waveform: "triangle", pan: 0, voice: "percussion", percussionKind: "snare" }
+      { time: 0, duration: 0.5, frequency: 440, velocity: 0.5, waveform: "sine", pan: 0, voice: "lead" },
+      { time: 2, duration: 0.5, frequency: 494, velocity: 0.5, waveform: "sine", pan: 0, voice: "lead" },
+      { time: 8, duration: 0.5, frequency: 523, velocity: 0.5, waveform: "sine", pan: 0, voice: "lead" },
+      { time: 8.5, duration: 0.5, frequency: 587, velocity: 0.5, waveform: "sine", pan: 0, voice: "lead" },
+      { time: 9, duration: 0.5, frequency: 659, velocity: 0.5, waveform: "sine", pan: 0, voice: "lead" }
     ];
-    const conducted = applyEnsembleConductor(events, 32, true, {
-      piano: true, analog: false, plucked: false, cinematicBass: true, atmosphere: false
-    });
-    expect(conducted.some(event => event.voice === "bass" && event.time === 16)).toBe(true);
-    expect(conducted.some(event => event.voice === "percussion" && event.percussionKind === "kick")).toBe(false);
-    expect(conducted.some(event => event.voice === "percussion" && event.percussionKind === "snare")).toBe(true);
+    const instruments = {
+      piano: true, analog: false, plucked: false, cinematicBass: false, atmosphere: false
+    };
+    const session = new AdaptiveConductorSession(events, 32, instruments, true);
+    const firstPhrase = session.prepareThrough(7.99);
+    expect(session.getDecision(0)).not.toBeNull();
+    expect(session.getDecision(1)).toBeNull();
+    const secondPhrase = session.prepareThrough(8);
+    expect(session.getDecision(1)).not.toBeNull();
+    expect(session.prepareThrough(8)).toEqual([]);
+    const rest = session.prepareThrough(32);
+    const incremental = [...firstPhrase, ...secondPhrase, ...rest];
+    expect(incremental).toEqual(applyEnsembleConductor(events, 32, true, instruments));
+  });
+
+  it("keeps at most two supporting roles active and leaves unusable melodic gaps silent", () => {
+    const events: NoteEvent[] = [];
+    for (let time = 8; time < 16; time += 0.5) {
+      events.push({
+        time, duration: 0.48, frequency: 440, velocity: 0.5,
+        waveform: "sine", pan: 0, voice: "lead"
+      });
+    }
+    events.push(
+      { time: 8.45, duration: 0.2, frequency: 660, velocity: 0.2, waveform: "triangle", pan: 0, voice: "answer" },
+      { time: 13.1, duration: 0.3, frequency: 880, velocity: 0.2, waveform: "sawtooth", pan: 0, voice: "texture" }
+    );
+    const session = new AdaptiveConductorSession(events, 32, undefined, true);
+    const conducted = session.prepareAll();
+    expect(conducted.some(event => event.voice === "answer")).toBe(false);
+    expect(conducted.some(event => event.voice === "texture")).toBe(false);
+    expect(session.getDecision(1)!.roles).toEqual([]);
   });
 
   it("leaves answer and counterline silent when the lead has no usable rests", () => {

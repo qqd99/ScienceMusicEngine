@@ -53,9 +53,10 @@ The browser UI includes mathematical visualization, a moving playhead, tempo, co
 - Each instrument has its own ON/OFF control and independent 0–150% mixer level.
 - The output-volume slider controls live playback and WAV export (0–150%; current default is 115%). The shared master chain applies a fixed +14 dB post-compressor gain (about 5.01× amplitude), followed by a fast peak limiter. Live playback and WAV export must use the same chain.
 - WAV export uses `OfflineAudioContext` and produces stereo 16-bit, 44.1 kHz output.
-- The **Ensemble Conductor** has its own ON/OFF control and is a selective orchestrator, not merely a volume curve. Enabled instruments are available to it, not automatically active. It analyses lead density and actual rests, assigns sparse bass/pad/answer/counterline roles, and reserves percussion for the transition and climax.
-- Plucked answers and analog counterlines must fit genuine gaps in the lead. Bass marks selected harmonic anchors; pads frame selected structural moments; percussion yields low-frequency downbeats when bass owns them. Keep no more than two supporting roles intentionally layered beneath the lead at once.
-- Conductor selection and dynamics are deterministic and shared by live playback and OfflineAudioContext WAV export. Preserve the Shepard experiment's continuous layered illusion; do not add ordinary ensemble accompaniment to it.
+- The **Ensemble Conductor** has its own ON/OFF control and is an adaptive, score-aware conductor, not a fixed instrument scheduler or volume curve. Enabled instruments are available to it, not automatically active.
+- The conductor analyzes each upcoming two-bar phrase (lead density, durations, rhythmic placement, velocity, rests and changes from the previous phrase), then selects at most two supporting roles. It carries previous decisions forward and can change roles at phrase boundaries as the musical context changes.
+- Plucked answers and analog counterlines must fit genuine lead gaps and compete for the same melodic space. Bass marks selected harmonic anchors; pads frame harmony when space allows; percussion responds to phrase energy and yields downbeats already owned by bass.
+- Live playback prepares the next phrase just ahead of its entrance. Offline WAV rendering walks the same deterministic phrase session from beginning to end. Preserve exact live/offline event parity and the Shepard experiment's continuous layered illusion.
 
 ### Critical instrument-routing behavior
 
@@ -106,22 +107,23 @@ After editing:
 
 ## 6. Current handoff / resume point
 
-The user auditioned the previous envelope-only Ensemble Conductor and reported: **“The conductor is not good, it just throwing everything in. It should decide when to play what and what thing suitable for the rhythm, even when every instrument are enable, not all of them should play.”**
+The user auditioned the first selective conductor and said it still felt like a scheduler. They approved the next architecture: **an adaptive conductor that can reconsider its decisions during playback when the musical situation changes**, with decisions revised at phrase boundaries.
 
-The required direction is now clear: replace volume-only orchestration with deterministic, rhythm-aware event selection. Enabled instruments are available to the conductor, not automatically active. It must inspect the actual lead rhythm, note density and rests; choose which supporting roles belong in each phrase; leave unsuitable parts silent; and keep live playback and WAV export identical.
+The required direction is a deterministic, score-aware adaptive conductor, not a fixed bar-role schedule:
 
-The selective orchestration revision should follow these rules:
+- Analyze each upcoming two-bar phrase: lead density, note durations, rhythmic placement, velocity, rests, harmonic anchors and change from the previous phrase.
+- Carry phrase-to-phrase context (recent density, energy and selected roles).
+- Select at most two supporting roles for a phrase. Enabled instruments are available, not automatically active.
+- Reconsider roles at each phrase boundary. Bass, pads, answers, analog counterlines and percussion must earn their place from the current musical context.
+- Live playback should prepare the next phrase just ahead of its entrance. Offline WAV export must walk the same deterministic session and produce identical events.
+- The event scheduler executes prepared events only; it must not make musical decisions.
+- Keep the Shepard illusion as its own continuous texture.
 
-- Piano remains the mathematical lead.
-- Bass marks selected harmonic anchors and a cadence approach, rather than playing every candidate note.
-- Pads frame selected structural moments, not every chord change.
-- Plucked Strings answer only inside real lead rests.
-- Warm Analog contributes a rare counterline only when a sufficiently long gap exists.
-- Percussion supports the transition and climax, yields the downbeat when bass owns it, and avoids unnecessary hats over a dense melody.
-- At most two supporting roles should be intentionally layered beneath the lead at once.
-- The Shepard illusion must remain a special continuous texture, not an ordinary ensemble arrangement.
+The user has agreed to score-aware adaptation from the generated composition; this does not require microphone input or real-time audio recognition. After implementation, ask the user to audition all instruments enabled and report whether the arrangement responds naturally to sparse/dense phrases. Do not claim perceptual success from tests alone.
 
-**Next action after the revision:** ask the user to audition the new conductor with all five instruments enabled and compare ON/OFF using the same mode and seed. Listen for whether the parts take turns, respect the melody's rests, and create a clear but uncluttered climax. Do not claim perceptual success based on tests alone. Ask for feedback before adding unrelated features.
+### Current adaptive-conductor revision
+
+The user approved phrase-boundary adaptation. The conductor should analyze the score ahead of each two-bar phrase, carry context from the previous phrase, and revise the selected supporting roles as density, rests, energy and rhythmic placement change. Live playback should request upcoming phrases just before their entrance; WAV export must use the same deterministic session. The scheduler remains an execution-only component. No microphone input is required for this score-aware first version.
 
 ### Current output-level revision
 

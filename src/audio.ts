@@ -174,56 +174,49 @@ export function resolveInstrumentEvents(composition: Composition, instruments: I
 }
 
 export type ConductorSection = "beginning" | "development" | "climax" | "ending";
-type ConductorVoice = "lead" | "answer" | "texture" | "bass" | "pad" | "percussion";
+export type ConductorRole = "answer" | "texture" | "bass" | "pad" | "percussion";
 
-const CONDUCTOR_ENVELOPES: Record<ConductorVoice, readonly number[]> = {
-  lead:       [0.82, 0.9, 0.9, 0.96, 1.08, 1.02, 0.84, 0.68],
-  answer:     [0, 0, 0.56, 0.48, 0.08, 0.08, 0.54, 0.08],
-  texture:    [0.08, 0.16, 0.32, 0.65, 0.25, 0.4, 0.12, 0.08],
-  bass:       [0.62, 0.18, 0.72, 0.18, 0.82, 0.58, 0.32, 0.18],
-  pad:        [0.48, 0.3, 0.08, 0.08, 0.08, 0.08, 0.42, 0.3],
-  percussion: [0, 0.05, 0.12, 0.45, 0.85, 0.72, 0.12, 0]
-};
+export interface ConductorPhraseAnalysis {
+  phraseIndex: number;
+  start: number;
+  end: number;
+  beats: number;
+  leadNotes: number;
+  density: number;
+  meanVelocity: number;
+  meanDurationBeats: number;
+  gapRatio: number;
+  longestGapBeats: number;
+  offbeatRatio: number;
+  energy: number;
+  densityChange: number;
+  energyChange: number;
+}
 
-const CONDUCTOR_THRESHOLDS: Record<ConductorVoice, number> = {
-  lead: 0.08, answer: 0.06, texture: 0.06, bass: 0.06, pad: 0.06, percussion: 0.06
-};
+export interface ConductorPhraseDecision {
+  phraseIndex: number;
+  section: ConductorSection;
+  analysis: ConductorPhraseAnalysis;
+  roles: ConductorRole[];
+  summary: string;
+}
+
+const conductorClamp = (value: number, min = 0, max = 1) =>
+  Math.min(max, Math.max(min, Number.isFinite(value) ? value : min));
 
 export function getConductorSection(progress: number): ConductorSection {
-  const phase = Math.max(0, Math.min(0.999999, Number.isFinite(progress) ? progress : 0));
+  const phase = conductorClamp(progress, 0, 0.999999);
   if (phase < 0.25) return "beginning";
   if (phase < 0.5) return "development";
   if (phase < 0.75) return "climax";
   return "ending";
 }
 
-function conductorLevel(voice: ConductorVoice, progress: number): number {
-  const position = Math.max(0, Math.min(0.999999, progress)) * 8;
-  const bar = Math.floor(position);
-  const withinBar = position - bar;
-  const curve = CONDUCTOR_ENVELOPES[voice];
-  const next = curve[Math.min(7, bar + 1)];
-  return curve[bar] + (next - curve[bar]) * withinBar;
-}
-
 function eventBar(event: NoteEvent, barDuration: number): number {
   return Math.max(0, Math.min(7, Math.floor(event.time / barDuration)));
 }
 
-function eventFitsLeadGap(event: NoteEvent, lead: NoteEvent[], duration: number, beat: number): boolean {
-  const bar = eventBar(event, beat * 4);
-  const gaps = findLeadGaps(
-    lead.filter(note => eventBar(note, beat * 4) === bar),
-    duration, beat, 0.12
-  );
-  const margin = beat * 0.035;
-  return gaps.some(gap =>
-    event.time >= gap.start + margin &&
-    event.time + event.duration <= gap.end - margin
-  );
-}
-
-function instrumentAvailable(voice: ConductorVoice, instruments?: InstrumentSettings): boolean {
+function instrumentAvailable(voice: ConductorRole, instruments?: InstrumentSettings): boolean {
   if (!instruments) return true;
   if (voice === "answer") return instruments.plucked;
   if (voice === "texture") return instruments.analog;
@@ -232,107 +225,404 @@ function instrumentAvailable(voice: ConductorVoice, instruments?: InstrumentSett
   return true;
 }
 
+function analyzeConductorPhrase(
+  events: NoteEvent[],
+  phraseIndex: number,
+  start: number,
+  end: number,
+  beat: number,
+  previousDensity: number | null,
+  previousEnergy: number | null
+): ConductorPhraseAnalysis {
+  const lead = events
+    .filter(event => (event.voice ?? "lead") === "lead")
+    .sort((a, b) => a.time - b.time);
+  const phraseLength = Math.max(0, end - start);
+  const beats = phraseLength / Math.max(beat, 0.000001);
+  const gaps: number[] = [];
+  let occupiedUntil = start;
+
+  for (const event of lead) {
+    const noteStart = Math.max(start, event.time);
+    const noteEnd = Math.min(end, event.time + Math.max(0, event.duration));
+    if (noteStart > occupiedUntil) gaps.push(noteStart - occupiedUntil);
+    occupiedUntil = Math.max(occupiedUntil, noteEnd);
+  }
+  if (occupiedUntil < end) gaps.push(end - occupiedUntil);
+
+  const meanVelocity = lead.length
+    ? lead.reduce((sum, event) => sum + event.velocity, 0) / lead.length
+    : 0;
+  const meanDurationBeats = lead.length
+    ? lead.reduce((sum, event) => sum + event.duration / Math.max(beat, 0.000001), 0) / lead.length
+    : 0;
+  const density = lead.length / Math.max(1, beats);
+  const gapRatio = phraseLength > 0
+    ? conductorClamp(gaps.reduce((sum, gap) => sum + gap, 0) / phraseLength)
+    : 0;
+  const longestGapBeats = (gaps.length ? Math.max(...gaps) : 0) / Math.max(beat, 0.000001);
+  const offbeatRatio = lead.length
+    ? lead.filter(event => {
+        const phase = ((event.time / beat) % 1 + 1) % 1;
+        return phase > 0.12 && phase < 0.88;
+      }).length / lead.length
+    : 0;
+  const energy = conductorClamp((conductorClamp(density / 1.8) * 0.55) + meanVelocity * 0.45);
+
+  return {
+    phraseIndex, start, end, beats, leadNotes: lead.length, density,
+    meanVelocity, meanDurationBeats, gapRatio, longestGapBeats, offbeatRatio,
+    energy,
+    densityChange: previousDensity === null ? 0 : density - previousDensity,
+    energyChange: previousEnergy === null ? 0 : energy - previousEnergy
+  };
+}
+
+function scoreConductorRoles(
+  events: NoteEvent[],
+  lead: NoteEvent[],
+  analysis: ConductorPhraseAnalysis,
+  duration: number,
+  beat: number,
+  instruments: InstrumentSettings | undefined,
+  previousRoles: ConductorRole[]
+): ConductorRole[] {
+  if (analysis.leadNotes === 0) return [];
+
+  const has = (role: ConductorRole) => events.some(event => event.voice === role);
+  const hasUsableAnswer = events.some(event =>
+    event.voice === "answer" && eventFitsLeadGap(event, lead, duration, beat)
+  );
+  const hasUsableTexture = events.some(event =>
+    event.voice === "texture" && eventFitsLeadGap(event, lead, duration, beat)
+  );
+  const openSpace = analysis.gapRatio;
+  const lowDensity = 1 - conductorClamp(analysis.density / 1.6);
+  const densityPressure = conductorClamp((analysis.density - 0.9) / 0.9);
+  const longGap = conductorClamp(analysis.longestGapBeats / 1.5);
+  const recovering = conductorClamp(-analysis.densityChange / 0.75);
+  const building = conductorClamp(analysis.densityChange / 0.75);
+  const structuralPhrase = analysis.phraseIndex === 0 || analysis.phraseIndex === 3 ? 1 : 0;
+  const middlePhrase = analysis.phraseIndex === 1 || analysis.phraseIndex === 2 ? 1 : 0;
+
+  const scores: Array<{ role: ConductorRole; score: number; threshold: number }> = [];
+  const add = (role: ConductorRole, rawScore: number, threshold: number) => {
+    if (!instrumentAvailable(role, instruments)) return;
+    const repeatPenalty = previousRoles.includes(role) ? (role === "bass" ? 0.04 : 0.12) : 0;
+    const score = rawScore - repeatPenalty;
+    if (score >= threshold) scores.push({ role, score, threshold });
+  };
+
+  if (has("bass")) {
+    add("bass", 0.76 + 0.08 * (1 - openSpace) + 0.04 * lowDensity, 0.5);
+  }
+  if (has("pad")) {
+    add("pad",
+      0.18 + 0.45 * openSpace + 0.18 * longGap +
+      0.18 * structuralPhrase - 0.32 * densityPressure,
+      0.48
+    );
+  }
+  if (hasUsableAnswer) {
+    add("answer",
+      0.16 + 0.5 * longGap + 0.22 * openSpace +
+      0.12 * recovering - 0.26 * densityPressure,
+      0.48
+    );
+  }
+  if (hasUsableTexture) {
+    const exceptionalSpace = conductorClamp((analysis.longestGapBeats - 1.4) / 0.8);
+    add("texture",
+      0.08 + 0.55 * conductorClamp((analysis.longestGapBeats - 0.7) / 1.2) +
+      0.18 * openSpace + 0.1 * recovering + 0.16 * exceptionalSpace -
+      0.28 * densityPressure,
+      0.5
+    );
+  }
+  if (has("percussion")) {
+    add("percussion",
+      0.16 + 0.22 * analysis.energy + 0.18 * analysis.offbeatRatio +
+      0.24 * building + 0.12 * middlePhrase - 0.24 * densityPressure,
+      0.46
+    );
+  }
+
+  const priority: Record<ConductorRole, number> = {
+    bass: 0, pad: 1, answer: 2, texture: 3, percussion: 4
+  };
+  scores.sort((a, b) => b.score - a.score || priority[a.role] - priority[b.role]);
+
+  const selected: ConductorRole[] = [];
+  for (const candidate of scores) {
+    if (selected.length >= 2) break;
+    // Strings and analog counterlines compete for the same melodic space.
+    if ((candidate.role === "answer" && selected.includes("texture")) ||
+        (candidate.role === "texture" && selected.includes("answer"))) continue;
+    selected.push(candidate.role);
+  }
+  return selected;
+}
+
+function selectConductorPhraseEvents(
+  events: NoteEvent[],
+  roles: ConductorRole[],
+  analysis: ConductorPhraseAnalysis,
+  duration: number,
+  beat: number
+): NoteEvent[] {
+  const start = analysis.start;
+  const end = analysis.end;
+  const barDuration = beat * 4;
+  const lead = events.filter(event => (event.voice ?? "lead") === "lead");
+  const gaps = findLeadGaps(lead, duration, beat, 0.12);
+  const selected: NoteEvent[] = [];
+  const add = (event: NoteEvent | undefined) => {
+    if (event && !selected.includes(event)) selected.push(event);
+  };
+  const gapLengthFor = (event: NoteEvent) => {
+    const gap = gaps.find(candidate =>
+      event.time >= candidate.start + beat * 0.035 &&
+      event.time + event.duration <= candidate.end - beat * 0.035
+    );
+    return gap ? gap.end - gap.start : 0;
+  };
+
+  for (const role of roles) {
+    const candidates = events.filter(event => event.voice === role).sort((a, b) => a.time - b.time);
+    if (role === "bass") {
+      const anchors = candidates.filter(event => {
+        const offset = (event.time - start) % barDuration;
+        return Math.min(Math.abs(offset), Math.abs(barDuration - offset)) <= beat * 0.12;
+      });
+      const anchorLimit = analysis.density > 1.3 ? 1 : 2;
+      anchors.slice(0, anchorLimit).forEach(add);
+      if (!anchors.length) add(candidates[0]);
+      const cadenceApproach = candidates.find(event =>
+        event.duration < beat * 0.7 &&
+        event.time >= end - beat * 0.8 &&
+        !selected.includes(event)
+      );
+      if (cadenceApproach && selected.filter(event => event.voice === "bass").length < 2 &&
+          analysis.gapRatio > 0.2) add(cadenceApproach);
+    } else if (role === "pad") {
+      const chord = candidates.filter(event => Math.abs(event.time - start) <= beat * 0.1);
+      (chord.length ? chord : candidates.slice(0, 4)).slice(0, 4).forEach(add);
+    } else if (role === "answer" || role === "texture") {
+      const best = candidates
+        .map(event => ({ event, gap: gapLengthFor(event) }))
+        .filter(candidate => candidate.gap > 0)
+        .sort((a, b) => b.gap - a.gap || a.event.time - b.event.time)[0];
+      add(best?.event);
+    } else if (role === "percussion") {
+      const bassOwnsDownbeats = roles.includes("bass")
+        ? candidatesForBassDownbeats(events, start, end, barDuration, beat)
+        : [];
+      const hits = candidates.filter(event => {
+        const kind = event.percussionKind ?? "kick";
+        if (kind === "kick" && bassOwnsDownbeats.some(time => Math.abs(time - event.time) <= beat * 0.12)) return false;
+        if (kind === "hat" && (analysis.density > 1.2 || analysis.gapRatio < 0.32)) return false;
+        if (kind === "snare" && analysis.density > 1.8) return false;
+        return true;
+      });
+      const kick = hits.find(event => (event.percussionKind ?? "kick") === "kick");
+      const snare = hits.find(event => event.percussionKind === "snare");
+      const hat = hits.find(event => event.percussionKind === "hat");
+      add(kick);
+      if (snare && (!kick || snare.time - kick.time >= beat)) add(snare);
+      else if (hat && analysis.gapRatio > 0.35) add(hat);
+      if (selected.filter(event => event.voice === "percussion").length < 2 && hat &&
+          analysis.gapRatio > 0.45 && analysis.density < 1.1) add(hat);
+    }
+  }
+  return selected.sort((a, b) => a.time - b.time);
+}
+
+function candidatesForBassDownbeats(
+  events: NoteEvent[],
+  start: number,
+  end: number,
+  barDuration: number,
+  beat: number
+): number[] {
+  return events
+    .filter(event => event.voice === "bass" && event.time >= start && event.time < end)
+    .filter(event => {
+      const offset = (event.time - start) % barDuration;
+      return Math.min(Math.abs(offset), Math.abs(barDuration - offset)) <= beat * 0.12;
+    })
+    .map(event => event.time);
+}
+
+function shapeConductedEvent(
+  event: NoteEvent,
+  analysis: ConductorPhraseAnalysis
+): NoteEvent {
+  const voice = event.voice ?? "lead";
+  const roleGain: Record<string, number> = {
+    lead: conductorClamp(0.92 + analysis.energy * 0.12 + analysis.energyChange * 0.04, 0.88, 1.08),
+    bass: 0.88,
+    pad: 0.72,
+    answer: 0.82,
+    texture: 0.68,
+    percussion: 0.9
+  };
+  const phraseGain = roleGain[voice] ?? 1;
+  const velocity = conductorClamp(event.velocity * phraseGain, 0.001, 1);
+  const endVelocity = conductorClamp((event.velocityEnd ?? event.velocity) * phraseGain, 0.001, 1);
+  return {
+    ...event,
+    velocity,
+    ...(event.velocityEnd !== undefined || voice === "pad" ? { velocityEnd: endVelocity } : {})
+  };
+}
+
+function conductPhrase(
+  events: NoteEvent[],
+  analysis: ConductorPhraseAnalysis,
+  duration: number,
+  beat: number,
+  instruments: InstrumentSettings | undefined,
+  previousRoles: ConductorRole[]
+): { events: NoteEvent[]; decision: ConductorPhraseDecision } {
+  const lead = events.filter(event => (event.voice ?? "lead") === "lead");
+  const roles = scoreConductorRoles(events, lead, analysis, duration, beat, instruments, previousRoles);
+  const supportEvents = selectConductorPhraseEvents(events, roles, analysis, duration, beat);
+  const supportSet = new Set(supportEvents);
+  const knownRoles = new Set(["answer", "texture", "bass", "pad", "percussion"]);
+  const kept = events.filter(event => {
+    const voice = event.voice ?? "lead";
+    return voice === "lead" || supportSet.has(event) || !knownRoles.has(voice);
+  });
+  const names: Record<ConductorRole, string> = {
+    answer: "Strings answer",
+    texture: "Analog counterline",
+    bass: "Bass anchors harmony",
+    pad: "Pads frame the harmony",
+    percussion: "Percussion marks the pulse"
+  };
+  const summary = roles.length
+    ? "Piano leads · " + roles.map(role => names[role]).join(" · ")
+    : "Piano alone · leave musical space";
+  const decision: ConductorPhraseDecision = {
+    phraseIndex: analysis.phraseIndex,
+    section: getConductorSection((analysis.phraseIndex + 0.5) / 4),
+    analysis,
+    roles,
+    summary
+  };
+  return {
+    events: kept.map(event => shapeConductedEvent(event, analysis)).sort((a, b) => a.time - b.time),
+    decision
+  };
+}
+
 /**
- * Selects a small, rhythm-aware set of supporting parts rather than playing
- * every enabled layer. Piano keeps the mathematical lead; bass marks selected
- * harmonic anchors; pads frame the opening and resolution; plucked answers and
- * analog counterlines must fit real melody rests; percussion is reserved for
- * the transition and climax. The same deterministic event list feeds live and
- * offline playback.
+ * Stateful, score-aware conductor. It analyzes and decides one two-bar phrase
+ * at a time, carrying context forward from the previous phrase. Live playback
+ * asks it for the next phrase just before that phrase begins; offline rendering
+ * walks the same session from beginning to end for exact parity.
  */
+export class AdaptiveConductorSession {
+  private readonly phrases: NoteEvent[][];
+  private readonly phraseDuration: number;
+  private readonly phraseCount: number;
+  private nextPhraseIndex = 0;
+  private previousRoles: ConductorRole[] = [];
+  private previousDensity: number | null = null;
+  private previousEnergy: number | null = null;
+  private readonly decisions: Array<ConductorPhraseDecision | null>;
+  private readonly duration: number;
+  private readonly beat: number;
+
+  constructor(
+    events: NoteEvent[],
+    duration: number,
+    private readonly instruments?: InstrumentSettings,
+    private readonly enabled = true
+  ) {
+    this.duration = Math.max(0, duration);
+    this.beat = this.duration / 32;
+    this.phraseCount = this.duration > 0 ? 4 : 0;
+    this.phraseDuration = this.phraseCount ? this.duration / this.phraseCount : 0;
+    this.phrases = Array.from({ length: this.phraseCount }, () => []);
+    this.decisions = Array.from({ length: this.phraseCount }, () => null);
+    for (const event of events) {
+      if (!this.phraseCount) break;
+      const index = Math.max(0, Math.min(this.phraseCount - 1, Math.floor(event.time / this.phraseDuration)));
+      this.phrases[index].push(event);
+    }
+    this.phrases.forEach(phrase => phrase.sort((a, b) => a.time - b.time));
+  }
+
+  prepareThrough(time: number): NoteEvent[] {
+    const prepared: NoteEvent[] = [];
+    while (this.nextPhraseIndex < this.phraseCount) {
+      const phraseIndex = this.nextPhraseIndex;
+      const start = phraseIndex * this.phraseDuration;
+      if (start > time + 0.000001) break;
+      const end = phraseIndex === this.phraseCount - 1
+        ? this.duration
+        : (phraseIndex + 1) * this.phraseDuration;
+      const phraseEvents = this.phrases[phraseIndex];
+      const analysis = analyzeConductorPhrase(
+        phraseEvents, phraseIndex, start, end, this.beat,
+        this.previousDensity, this.previousEnergy
+      );
+
+      if (this.enabled) {
+        const conducted = conductPhrase(
+          phraseEvents, analysis, this.duration, this.beat,
+          this.instruments, this.previousRoles
+        );
+        prepared.push(...conducted.events);
+        this.decisions[phraseIndex] = conducted.decision;
+        this.previousRoles = [...conducted.decision.roles];
+      } else {
+        this.decisions[phraseIndex] = {
+          phraseIndex,
+          section: getConductorSection((phraseIndex + 0.5) / 4),
+          analysis,
+          roles: [],
+          summary: "Conductor bypassed"
+        };
+        prepared.push(...phraseEvents.map(event => ({ ...event })));
+        this.previousRoles = [];
+      }
+
+      this.previousDensity = analysis.density;
+      this.previousEnergy = analysis.energy;
+      this.nextPhraseIndex++;
+    }
+    return prepared.sort((a, b) => a.time - b.time);
+  }
+
+  prepareAll(): NoteEvent[] {
+    return this.prepareThrough(Number.POSITIVE_INFINITY);
+  }
+
+  getDecision(phraseIndex: number): ConductorPhraseDecision | null {
+    return this.decisions[phraseIndex] ?? null;
+  }
+}
+
+function createConductorSession(
+  composition: Composition,
+  instruments: InstrumentSettings,
+  conductorEnabled: boolean
+): AdaptiveConductorSession {
+  const resolved = resolveInstrumentEvents(composition, instruments);
+  const available = hasDedicatedInstruments(instruments) ? instruments : undefined;
+  const enabled = conductorEnabled && composition.label !== "shepard";
+  return new AdaptiveConductorSession(resolved, composition.duration, available, enabled);
+}
+
 export function applyEnsembleConductor(
   events: NoteEvent[],
   duration: number,
   enabled = true,
   instruments?: InstrumentSettings
 ): NoteEvent[] {
-  if (!enabled || duration <= 0) return events.map(event => ({ ...event }));
-
-  const beat = duration / 32;
-  const barDuration = beat * 4;
-  const lead = events.filter(event => (event.voice ?? "lead") === "lead");
-  const selectedTextureBar = [3, 5].find(bar =>
-    instrumentAvailable("texture", instruments) &&
-    events.some(event =>
-      event.voice === "texture" &&
-      eventBar(event, barDuration) === bar &&
-      eventFitsLeadGap(event, lead, duration, beat)
-    )
-  );
-  // Decide bass ownership before walking the event list so kick filtering does
-  // not depend on the order of simultaneous events in the input array.
-  const bassDownbeatBars = new Set<number>(events
-    .filter(event => event.voice === "bass" && instrumentAvailable("bass", instruments))
-    .filter(event => {
-      const bar = eventBar(event, barDuration);
-      return [0, 2, 4].includes(bar) && Math.abs(event.time - bar * barDuration) <= beat * 0.12;
-    })
-    .map(event => eventBar(event, barDuration)));
-  const bassEventsByBar = new Set<number>();
-  const answerBars = new Set<number>();
-  const percussionCounts = new Map<number, number>();
-  const conducted: NoteEvent[] = [];
-
-  for (const event of events) {
-    const voice = (event.voice ?? "lead") as ConductorVoice;
-    const bar = eventBar(event, barDuration);
-    const barStart = bar * barDuration;
-    const offset = event.time - barStart;
-
-    if (voice === "lead") {
-      // The mathematical melody remains the foreground voice.
-    } else if (voice === "answer") {
-      if (!instrumentAvailable(voice, instruments) || ![2, 6].includes(bar) ||
-          answerBars.has(bar) || !eventFitsLeadGap(event, lead, duration, beat)) continue;
-      answerBars.add(bar);
-    } else if (voice === "texture") {
-      if (!instrumentAvailable(voice, instruments) || bar !== selectedTextureBar ||
-          !eventFitsLeadGap(event, lead, duration, beat)) continue;
-      // At most one counterline phrase per composition.
-      if (conducted.some(item => item.voice === "texture")) continue;
-    } else if (voice === "bass") {
-      if (!instrumentAvailable(voice, instruments)) continue;
-      const rootAnchor = [0, 2, 4].includes(bar) && Math.abs(offset) <= beat * 0.12;
-      const cadenceApproach = bar === 5 && Math.abs(offset - beat * 3.5) <= beat * 0.12;
-      if (!rootAnchor && !cadenceApproach) continue;
-      const key = cadenceApproach ? 8 : bar;
-      if (bassEventsByBar.has(key)) continue;
-      bassEventsByBar.add(key);
-
-    } else if (voice === "pad") {
-      if (!instrumentAvailable(voice, instruments) || ![0, 6].includes(bar)) continue;
-    } else if (voice === "percussion") {
-      if (![3, 4, 5].includes(bar)) continue;
-      const kind = event.percussionKind ?? "kick";
-      const hitCount = percussionCounts.get(bar) ?? 0;
-      if (hitCount >= 2) continue;
-      if (kind === "kick") {
-        if (Math.abs(offset) > beat * 0.12 || bassDownbeatBars.has(bar)) continue;
-      } else if (kind === "snare") {
-        if (Math.abs(offset - beat * 2) > beat * 0.12) continue;
-      } else if (kind === "hat") {
-        if (bar !== 5 || !eventFitsLeadGap(event, lead, duration, beat)) continue;
-      }
-      percussionCounts.set(bar, hitCount + 1);
-    }
-
-    const curve = CONDUCTOR_ENVELOPES[voice];
-    if (!curve) {
-      conducted.push({ ...event });
-      continue;
-    }
-    const progress = Math.max(0, Math.min(0.999999, event.time / duration));
-    const endProgress = Math.max(0, Math.min(0.999999, (event.time + event.duration) / duration));
-    const intensity = conductorLevel(voice, progress);
-    const endIntensity = conductorLevel(voice, endProgress);
-    if (intensity < CONDUCTOR_THRESHOLDS[voice] && endIntensity < CONDUCTOR_THRESHOLDS[voice]) continue;
-    conducted.push({
-      ...event,
-      velocity: Math.max(0.001, Math.min(1, event.velocity * intensity)),
-      velocityEnd: Math.max(0.001, Math.min(1, event.velocity * endIntensity))
-    });
-  }
-  return conducted.sort((a, b) => a.time - b.time);
+  return new AdaptiveConductorSession(events, duration, instruments, enabled).prepareAll();
 }
 
 export function preparePlaybackEvents(
@@ -340,11 +630,7 @@ export function preparePlaybackEvents(
   instruments: InstrumentSettings,
   conductorEnabled = true
 ): NoteEvent[] {
-  const resolved = resolveInstrumentEvents(composition, instruments);
-  // The Shepard illusion is a special continuous texture, not an eight-bar ensemble.
-  if (composition.label === "shepard") return resolved;
-  const available = hasDedicatedInstruments(instruments) ? instruments : undefined;
-  return applyEnsembleConductor(resolved, composition.duration, conductorEnabled, available);
+  return createConductorSession(composition, instruments, conductorEnabled).prepareAll();
 }
 
 function scheduleInstrumentLayer(
@@ -501,6 +787,7 @@ export class MusicPlayer {
   private cursor = 0;
   private composition: Composition | null = null;
   private playbackEvents: NoteEvent[] = [];
+  private conductorSession: AdaptiveConductorSession | null = null;
   private master: GainNode | null = null;
   private compressor: DynamicsCompressorNode | null = null;
   private outputGain: GainNode | null = null;
@@ -520,7 +807,7 @@ export class MusicPlayer {
     this.profile = profile;
     this.levels = { ...levels };
     this.conductorEnabled = conductorEnabled;
-    this.playbackEvents = preparePlaybackEvents(composition, this.instruments, this.conductorEnabled);
+    this.resetConductorSession();
     this.master = ctx.createGain();
     this.master.gain.value = Math.max(0, Math.min(1.5, volume));
     const output = connectMasterOutput(ctx, this.master);
@@ -533,14 +820,34 @@ export class MusicPlayer {
     this.schedule();
     this.timer = window.setInterval(() => this.schedule(), 35);
   }
+  private resetConductorSession(): void {
+    const composition = this.composition;
+    if (!composition) {
+      this.conductorSession = null;
+      this.playbackEvents = [];
+      this.cursor = 0;
+      return;
+    }
+    const resolved = resolveInstrumentEvents(composition, this.instruments);
+    const available = hasDedicatedInstruments(this.instruments) ? this.instruments : undefined;
+    const enabled = this.conductorEnabled && composition.label !== "shepard";
+    this.conductorSession = new AdaptiveConductorSession(
+      resolved, composition.duration, available, enabled
+    );
+    this.playbackEvents = [];
+    this.cursor = 0;
+  }
   private schedule(): void {
     const ctx = this.context, comp = this.composition;
     if (!ctx || !comp || !this.playing) return;
     const horizon = ctx.currentTime + 0.18;
     while (this.cycleStart + comp.duration < ctx.currentTime - 0.5) {
       this.cycleStart += comp.duration;
-      this.cursor = 0;
+      this.resetConductorSession();
     }
+    const elapsedHorizon = Math.max(0, horizon - this.cycleStart);
+    const nextPhraseEvents = this.conductorSession?.prepareThrough(elapsedHorizon) ?? [];
+    if (nextPhraseEvents.length) this.playbackEvents.push(...nextPhraseEvents);
     while (this.cursor < this.playbackEvents.length) {
       const event = this.playbackEvents[this.cursor];
       const at = this.cycleStart + event.time;
@@ -550,7 +857,7 @@ export class MusicPlayer {
     }
     if (this.cursor >= this.playbackEvents.length && ctx.currentTime >= this.cycleStart + comp.duration - 0.18) {
       this.cycleStart += comp.duration;
-      this.cursor = 0;
+      this.resetConductorSession();
     }
   }
   private playNote(event: NoteEvent, at: number): void {
@@ -630,9 +937,10 @@ export class MusicPlayer {
     this.profile = profile;
     this.levels = { ...levels };
     this.conductorEnabled = conductorEnabled;
-    this.playbackEvents = preparePlaybackEvents(composition, this.instruments, this.conductorEnabled);
+    this.resetConductorSession();
     this.cycleStart = now - phase * composition.duration;
     const elapsedInCycle = phase * composition.duration;
+    this.playbackEvents = this.conductorSession?.prepareThrough(elapsedInCycle + 0.18) ?? [];
     this.cursor = this.playbackEvents.findIndex(event => event.time >= elapsedInCycle + 0.025);
     if (this.cursor < 0) this.cursor = this.playbackEvents.length;
     this.schedule();
@@ -643,6 +951,11 @@ export class MusicPlayer {
     const now = this.context.currentTime;
     this.master.gain.cancelScheduledValues(now);
     this.master.gain.setTargetAtTime(Math.max(0, Math.min(1.5, volume)), now, 0.025);
+  }
+  getCurrentConductorDecision(): ConductorPhraseDecision | null {
+    if (!this.composition || this.composition.label === "shepard") return null;
+    const phraseIndex = Math.min(3, Math.floor(this.getProgress() * 4));
+    return this.conductorSession?.getDecision(phraseIndex) ?? null;
   }
   getProgress(): number {
     const ctx = this.context, comp = this.composition;
@@ -660,6 +973,9 @@ export class MusicPlayer {
       try { osc.stop(now + 0.015); } catch { /* already stopped */ }
     }
     this.active.clear();
+    this.conductorSession = null;
+    this.playbackEvents = [];
+    this.cursor = 0;
     const oldMaster = this.master;
     oldMaster?.gain.setTargetAtTime(0, now, 0.025);
     this.master = null;

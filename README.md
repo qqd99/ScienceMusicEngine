@@ -33,16 +33,16 @@ The five independently switchable and mixable instrument layers are:
 
 The independently switchable **Ensemble Conductor** is a selective orchestrator, not a command for every enabled instrument to play. Enabled instruments are available to the conductor; they are not automatically active throughout the piece.
 
-The conductor analyses the generated lead's note density, durations and rests, then selects a sparse set of complementary events:
+The conductor is an **adaptive, score-aware system**, not a fixed instrument scheduler. It analyzes the next two-bar phrase before that phrase begins, comparing lead-note density, note duration, rhythmic placement, velocity, rests and recent phrase-to-phrase changes. It then selects at most two supporting roles for that phrase and carries its previous decisions forward as context.
 
-- Bass marks selected harmonic anchors rather than repeating every available bass note.
-- Pads appear at chosen structural moments rather than sustaining every chord change.
-- Plucked Strings answer only when a real gap can contain the response.
-- Warm Analog is limited to a rare counterline in a sufficiently long rest.
-- Percussion is reserved for the transition and climax, and yields the downbeat when bass already owns it.
-- No more than two supporting roles are intentionally layered beneath the lead at a time.
+- Bass marks selected harmonic anchors; dense phrases receive fewer bass events.
+- Pads frame harmony when the lead leaves enough space.
+- Plucked Strings answer only when a real melodic gap can contain the response.
+- Warm Analog competes with the strings for the same melodic space and is chosen only for sufficiently open phrases.
+- Percussion responds to phrase energy and rhythmic activity, yielding downbeats already owned by bass.
+- The conductor can change its supporting roles at each phrase boundary as density, energy and available space change.
 
-All decisions are deterministic for a fixed composition and instrument configuration. The same event resolver, orchestration decisions, instrument levels, sound profile and dynamics are shared by live playback and offline WAV export. Disabling the conductor bypasses its selective orchestration.
+Live playback prepares each upcoming phrase just ahead of its entrance. Offline WAV rendering walks the same deterministic conductor session from beginning to end, preserving exact event parity. Identical composition, seed and instrument settings produce identical decisions. Disabling the conductor bypasses its orchestration.
 
 ## Sound design
 
