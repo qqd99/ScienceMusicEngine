@@ -1,5 +1,5 @@
 import { generateComposition, type Mode } from "./math";
-import { MusicPlayer, renderCompositionWav } from "./audio";
+import { DEFAULT_INSTRUMENTS, MusicPlayer, renderCompositionWav, type InstrumentSettings } from "./audio";
 import "./style.css";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -13,6 +13,7 @@ let richInstrumentsEnabled = true;
 let musicalArrangementEnabled = true;
 let musicalExpressionEnabled = true;
 let masterVolume = 1.15;
+const instrumentSettings: InstrumentSettings = { ...DEFAULT_INSTRUMENTS };
 const names: Record<Mode, string> = {
   mandelbrot: "Mandelbrot explorer", euclidean: "Euclidean rhythms", chaos: "Chaos theory", shepard: "Shepard illusion"
 };
@@ -40,7 +41,7 @@ app.innerHTML = `
           <label>Complexity <output id="complexity-value">55%</output><input id="complexity" type="range" min="10" max="100" value="55"/></label>
           <label>Root note<select id="root"><option value="60">C</option><option value="62">D</option><option value="64">E</option><option value="65">F</option><option value="67">G</option><option value="69">A</option><option value="71">B</option></select></label>
           <label>Harmonic color<select id="scale"><option>Lydian</option><option>Major</option><option>Minor</option><option>Pentatonic</option></select></label>
-        </div><div class="feature-controls"><div class="feature-heading">04 / SOUND FEATURES</div><div class="feature-buttons"><button id="toggle-rich" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>RICH INSTRUMENTS</b><small>Overtones · brighter timbre</small></span><strong>ON</strong></button><button id="toggle-arrangement" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>MUSICAL ARRANGEMENT</b><small>Bass · chords · drums · phrase accents</small></span><strong>ON</strong></button><button id="toggle-expression" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>MUSICAL EXPRESSION</b><small>8-bar form · motif · climax · cadence</small></span><strong>ON</strong></button></div></div><div class="seed-row"><span>DETERMINISTIC SEED</span><code id="seed-value">0.314159</code><button id="random-seed" class="text-button">↻ NEW SEED</button></div></div>
+        </div><div class="feature-controls"><div class="feature-heading">04 / SOUND FEATURES</div><div class="feature-buttons"><button id="toggle-rich" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>RICH INSTRUMENTS</b><small>Overtones · brighter timbre</small></span><strong>ON</strong></button><button id="toggle-arrangement" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>MUSICAL ARRANGEMENT</b><small>Bass · chords · drums · phrase accents</small></span><strong>ON</strong></button><button id="toggle-expression" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>MUSICAL EXPRESSION</b><small>8-bar form · motif · climax · cadence</small></span><strong>ON</strong></button><button id="instrument-piano" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>PIANO</b><small>Bell-like attack · natural decay</small></span><strong>ON</strong></button><button id="instrument-analog" class="feature-toggle" type="button" aria-pressed="false"><span class="toggle-indicator"></span><span><b>WARM ANALOG</b><small>Detuned saw · resonant filter</small></span><strong>OFF</strong></button><button id="instrument-plucked" class="feature-toggle" type="button" aria-pressed="false"><span class="toggle-indicator"></span><span><b>PLUCKED STRINGS</b><small>Short pluck · fast decay</small></span><strong>OFF</strong></button><button id="instrument-cinematicBass" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>CINEMATIC BASS</b><small>Sub-octave · deep low end</small></span><strong>ON</strong></button><button id="instrument-atmosphere" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>ATMOSPHERIC PADS</b><small>Detuned shimmer · slow swell</small></span><strong>ON</strong></button></div></div><div class="seed-row"><span>DETERMINISTIC SEED</span><code id="seed-value">0.314159</code><button id="random-seed" class="text-button">↻ NEW SEED</button></div></div>
         <div class="volume-control"><label for="master-volume"><span>OUTPUT VOLUME</span><output id="volume-value">115%</output></label><input id="master-volume" type="range" min="0" max="150" value="115" step="1" aria-label="Master music volume"/></div><div class="transport"><div class="transport-left"><button id="play" class="play-button"><span>▶</span> PLAY EXPERIMENT</button><button id="export-wav" class="export-button">↓ EXPORT WAV</button></div><div class="transport-status"><span class="status-light" id="status-light"></span><span id="status">READY TO GENERATE</span></div></div>
       </section>
     </section>
@@ -100,7 +101,7 @@ function animatePlayhead() {
 }
 function updateLiveComposition() {
   const comp=generateComposition(mode,options());
-  if (player.isPlaying) player.update(comp, masterVolume);
+  if (player.isPlaying) player.update(comp, masterVolume, instrumentSettings);
 }
 function setMode(next: Mode) {
   mode = next;
@@ -118,6 +119,14 @@ $("#toggle-rich").addEventListener("click", () => {
   richInstrumentsEnabled = !richInstrumentsEnabled;
   setFeatureButton("toggle-rich", richInstrumentsEnabled);
   render(); updateLiveComposition();
+});
+(["piano","analog","plucked","cinematicBass","atmosphere"] as const).forEach(instrument => {
+  const id = "instrument-" + instrument;
+  app.querySelector<HTMLButtonElement>("#" + id)!.addEventListener("click", () => {
+    instrumentSettings[instrument] = !instrumentSettings[instrument];
+    setFeatureButton(id, instrumentSettings[instrument]);
+    updateLiveComposition();
+  });
 });
 $("#toggle-expression").addEventListener("click", () => {
   musicalExpressionEnabled = !musicalExpressionEnabled;
@@ -149,7 +158,7 @@ $("#play").addEventListener("click",async()=>{
     return;
   }
   try {
-    await player.play(generateComposition(mode,options()), masterVolume);playing=true;
+    await player.play(generateComposition(mode,options()), masterVolume, instrumentSettings);playing=true;
     button.innerHTML="<span>■</span> STOP EXPERIMENT";button.classList.add("is-playing");button.setAttribute("aria-pressed","true");
     $("#status").textContent="PLAYING · LIVE 8-BAR SEQUENCE";$("#status-light").classList.add("on");
     animatePlayhead();
@@ -161,7 +170,7 @@ $("#export-wav").addEventListener("click", async () => {
   button.textContent = "RENDERING WAV…";
   try {
     const composition = generateComposition(mode, options());
-    const wav = await renderCompositionWav(composition, masterVolume);
+    const wav = await renderCompositionWav(composition, masterVolume, instrumentSettings);
     const url = URL.createObjectURL(wav);
     const link = document.createElement("a");
     link.href = url;
