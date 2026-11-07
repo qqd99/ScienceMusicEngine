@@ -72,8 +72,10 @@ export class MusicPlayer {
       try { osc.stop(now + 0.015); } catch { /* already stopped */ }
     }
     this.active.clear();
-    this.master?.gain.setTargetAtTime(0, now, 0.025);
-    window.setTimeout(() => { this.master?.disconnect(); this.master = null; }, 80);
+    const oldMaster = this.master;
+    oldMaster?.gain.setTargetAtTime(0, now, 0.025);
+    this.master = null;
+    window.setTimeout(() => oldMaster?.disconnect(), 80);
   }
   get isPlaying(): boolean { return this.playing; }
 }
