@@ -13,7 +13,7 @@ After GitHub Pages is enabled with **Settings → Pages → Source: GitHub Actio
 - **Chaos map:** logistic map dynamics mapped to melodic events.
 - **Shepard illusion:** overlapping octave layers create an endlessly rising auditory illusion.
 
-All experiments include two independently switchable sound features. **Rich Instruments** adds an audible octave overtone and brighter, more resonant lead timbre. **Musical Arrangement** adds bass, sustained triad pads, stronger bar accents, phrase shaping and a data-influenced chord progression. Turn either feature OFF to compare against the simpler mathematical lead. Both settings are respected by live playback and WAV export. No samples are used.
+All experiments include independently switchable sound features. **Rich Instruments** adds an audible octave overtone and brighter, more resonant lead timbre. **Musical Arrangement** adds bass, sustained triad pads and a data-influenced chord progression. **Musical Expression** adds an eight-bar dynamic arc, short call-and-response echoes and rising scale-aware pickups that resolve to the tonic. Each feature has its own ON/OFF control, and all settings are respected by live playback and WAV export. No samples are used.
 
 Use **Export WAV** to render the current eight-bar composition offline as a stereo 16-bit, 44.1 kHz WAV file. Export does not require starting live playback.
 
