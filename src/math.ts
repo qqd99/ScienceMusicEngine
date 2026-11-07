@@ -132,39 +132,64 @@ export function generateComposition(mode: Mode, options: {
       }
     }
   }
-  // Musical expression is a separate, switchable performance layer.
+  // Musical expression is a composed eight-bar form, not extra random fills.
+  // The source data supplies the motif pitches; the arrangement develops that
+  // motif through repetition, variation, a denser climax and a resolved ending.
   if (musicalExpression) {
-    const leadEvents = events.filter(event => event.voice === "lead");
-    const dynamicArc = [0.68, 0.78, 0.9, 1.08, 1.0, 0.9, 0.78, 0.62];
-    for (const event of leadEvents) {
-      const bar = Math.min(7, Math.floor(event.time / (4 * beat)));
-      event.velocity = clamp(event.velocity * dynamicArc[bar], 0.035, 0.96);
-      if ((bar === 1 || bar === 3 || bar === 5 || bar === 6) && event.velocity > 0.16 && (Math.round(event.time / (beat / 2)) % 4 === 0)) {
-        events.push({
-          time: event.time + beat * 0.75,
-          duration: event.duration * 0.52,
-          frequency: event.frequency * 1.5,
-          velocity: event.velocity * 0.22,
-          waveform: "sine",
-          pan: clamp(event.pan * -0.7, -0.8, 0.8),
-          voice: "lead"
-        });
-      }
+    const scaleNotes = SCALES[scale] ?? SCALES.Lydian;
+    const source = values.length ? values : Array.from({length: steps}, (_, i) => i / steps);
+    const degreeAt = (step: number) => {
+      const raw = source[step % source.length] ?? 0.5;
+      // Blend the mathematical value with its position so binary sources such
+      // as Euclidean rhythms still produce a varied, scale-constrained motif.
+      const shaped = clamp(raw * 0.68 + (step % 8) / 7 * 0.32, 0, 0.999);
+      return Math.floor(shaped * scaleNotes.length);
+    };
+    const motif = [0, 2, 4, 6].map(step => degreeAt(step));
+    const rhythmByBar = [
+      [0, 3, 6],       // 1: sparse introduction
+      [0, 2, 5, 7],    // 2: state the motif
+      [0, 2, 4, 6],    // 3: develop it
+      [0, 1, 4, 6, 7], // 4: more motion
+      [0, 1, 2, 3, 4, 5, 6, 7], // 5: climax begins
+      [0, 1, 2, 3, 4, 5, 6, 7], // 6: sustain the climax
+      [0, 3, 6],       // 7: release
+      [0, 4, 7]        // 8: final cadence
+    ];
+    const sectionGain = [0.48, 0.58, 0.68, 0.78, 1.0, 0.94, 0.62, 0.42];
+    // Replace the unstructured data-to-note stream with a deliberate lead line.
+    for (let i = events.length - 1; i >= 0; i--) {
+      if ((events[i].voice ?? "lead") === "lead") events.splice(i, 1);
     }
-    const scaleNotesForFills = SCALES[scale] ?? SCALES.Lydian;
-    const tonic = root + 12;
-    // Ascending pickups at the end of bars 4 and 8 resolve to the tonic.
-    for (const bar of [3, 7]) {
-      const start = (bar * 4 + 3) * beat;
-      [2, 4, 6, 0].forEach((degree, index) => {
-        const semitone = degree === 0 ? 12 : scaleNotesForFills[degree % scaleNotesForFills.length];
+    for (let bar = 0; bar < 8; bar++) {
+      const rhythm = rhythmByBar[bar];
+      rhythm.forEach((slot, noteIndex) => {
+        const motifIndex = noteIndex % motif.length;
+        let degree = motif[motifIndex];
+        if (bar === 2 || bar === 3) {
+          // Development: alter one motif tone at a time, retaining its identity.
+          degree = (degree + (noteIndex % 2 === 0 ? 1 : 0)) % scaleNotes.length;
+        } else if (bar === 4 || bar === 5) {
+          // Climax: use the motif in a higher register and let its contour rise.
+          degree = (degree + Math.floor(noteIndex / 3)) % scaleNotes.length;
+        } else if (bar >= 6) {
+          // Ending: reduce movement and guide the final notes home.
+          degree = bar === 7 && noteIndex === rhythm.length - 1 ? 0 : motif[motifIndex];
+        }
+        const octave = bar >= 4 && bar <= 5 ? 2 : 1;
+        const midi = root + octave * 12 + scaleNotes[degree];
+        const isFinal = bar === 7 && noteIndex === rhythm.length - 1;
+        const isClimax = bar === 4 || bar === 5;
+        const isDownbeat = slot === 0;
+        const velocity = clamp(sectionGain[bar] * (isDownbeat ? 0.92 : 0.66) * (isClimax ? 1.08 : 1), 0.08, 0.92);
+        const durationBeats = isFinal ? 3.55 : isClimax ? 0.42 : slot === 7 ? 0.34 : 0.58;
         events.push({
-          time: start + index * beat * 0.22,
-          duration: beat * (index === 3 ? 0.62 : 0.2),
-          frequency: midiHz(tonic + semitone),
-          velocity: index === 3 ? 0.48 : 0.25 + index * 0.045,
-          waveform: "triangle",
-          pan: (index - 1.5) * 0.16,
+          time: bar * 4 * beat + slot * 0.5 * beat,
+          duration: durationBeats * beat,
+          frequency: midiHz(midi),
+          velocity,
+          waveform: bar >= 4 && bar <= 5 ? "triangle" : "sine",
+          pan: Math.sin((bar * 8 + slot) * 0.23) * 0.28,
           voice: "lead"
         });
       });
