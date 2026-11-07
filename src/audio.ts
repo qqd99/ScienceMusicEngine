@@ -67,6 +67,9 @@ export class MusicPlayer {
     if (!this.playing || !this.context) return;
     const ctx = this.context;
     const now = ctx.currentTime;
+    // Preserve the current musical phase while changing tempo or mathematical
+    // parameters. Re-anchor the new cycle to the same normalized position.
+    const phase = this.getProgress();
     const oldMaster = this.master;
     const nextMaster = ctx.createGain();
     nextMaster.gain.setValueAtTime(0.0001, now);
@@ -76,8 +79,10 @@ export class MusicPlayer {
     oldMaster?.gain.setTargetAtTime(0.0001, now, 0.035);
     this.master = nextMaster;
     this.composition = composition;
-    this.cycleStart = now + 0.13;
-    this.cursor = 0;
+    this.cycleStart = now - phase * composition.duration;
+    const elapsedInCycle = phase * composition.duration;
+    this.cursor = composition.events.findIndex(event => event.time >= elapsedInCycle + 0.025);
+    if (this.cursor < 0) this.cursor = composition.events.length;
     this.schedule();
     window.setTimeout(() => oldMaster?.disconnect(), 220);
   }
