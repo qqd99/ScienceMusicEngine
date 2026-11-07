@@ -131,3 +131,82 @@ export class MusicPlayer {
   }
   get isPlaying(): boolean { return this.playing; }
 }
+
+export async function renderCompositionWav(composition: Composition): Promise<Blob> {
+  const sampleRate = 44100;
+  const tailSeconds = 1.25;
+  const frameCount = Math.ceil((composition.duration + tailSeconds) * sampleRate);
+  const offline = new OfflineAudioContext(2, frameCount, sampleRate);
+  const master = offline.createGain();
+  master.gain.value = 0.72;
+  master.connect(offline.destination);
+
+  for (const event of composition.events) {
+    const voice = event.voice ?? "lead";
+    const at = Math.max(0, event.time);
+    const end = Math.min(composition.duration + tailSeconds, at + Math.max(0.04, event.duration));
+    const duration = end - at;
+    if (duration <= 0) continue;
+    const oscillator = offline.createOscillator();
+    const filter = offline.createBiquadFilter();
+    const gain = offline.createGain();
+    const pan = offline.createStereoPanner();
+    oscillator.type = voice === "bass" ? "triangle" : voice === "pad" ? "sine" : event.waveform;
+    oscillator.frequency.setValueAtTime(event.frequency, at);
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(voice === "pad" ? 1900 : voice === "bass" ? 520 : 6200, at);
+    const attack = voice === "pad" ? Math.min(0.55, duration * 0.3) : voice === "bass" ? 0.018 : 0.025;
+    const release = voice === "pad" ? Math.min(0.7, duration * 0.35) : 0.08;
+    const peak = Math.max(0.0002, event.velocity);
+    const holdEnd = Math.max(at + attack + 0.02, end - release);
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(peak, at + attack);
+    gain.gain.setValueAtTime(peak, holdEnd);
+    gain.gain.exponentialRampToValueAtTime(0.0001, end);
+    pan.pan.setValueAtTime(event.pan, at);
+    oscillator.connect(filter).connect(gain).connect(pan).connect(master);
+    if (voice === "lead") {
+      const overtone = offline.createOscillator();
+      const overtoneGain = offline.createGain();
+      overtone.type = "triangle";
+      overtone.frequency.setValueAtTime(event.frequency * 2.003, at);
+      overtone.detune.setValueAtTime(-4, at);
+      overtoneGain.gain.value = 0.19;
+      overtone.connect(overtoneGain).connect(filter);
+      overtone.start(at);
+      overtone.stop(end + 0.03);
+    }
+    oscillator.start(at);
+    oscillator.stop(end + 0.03);
+  }
+
+  const rendered = await offline.startRendering();
+  const channels = [rendered.getChannelData(0), rendered.getChannelData(1)];
+  const wav = new ArrayBuffer(44 + rendered.length * 4);
+  const view = new DataView(wav);
+  const writeText = (offset: number, text: string) => {
+    for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i));
+  };
+  writeText(0, "RIFF");
+  view.setUint32(4, 36 + rendered.length * 4, true);
+  writeText(8, "WAVE");
+  writeText(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 2, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 4, true);
+  view.setUint16(32, 4, true);
+  view.setUint16(34, 16, true);
+  writeText(36, "data");
+  view.setUint32(40, rendered.length * 4, true);
+  let offset = 44;
+  for (let i = 0; i < rendered.length; i++) {
+    for (let channel = 0; channel < 2; channel++) {
+      const sample = Math.max(-1, Math.min(1, channels[channel][i]));
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+      offset += 2;
+    }
+  }
+  return new Blob([wav], { type: "audio/wav" });
+}
