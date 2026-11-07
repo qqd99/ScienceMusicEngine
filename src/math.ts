@@ -7,12 +7,15 @@ export interface NoteEvent {
   waveform: OscillatorType;
   pan: number;
   voice?: "lead" | "bass" | "pad";
+  rich?: boolean;
 }
 export interface Composition {
   events: NoteEvent[];
   duration: number;
   values: number[];
   label: string;
+  richInstruments: boolean;
+  musicalArrangement: boolean;
 }
 const SCALES: Record<string, number[]> = {
   "Lydian": [0, 2, 4, 6, 7, 9, 11],
@@ -54,12 +57,15 @@ export function logisticSequence(seed: number, r: number, count: number): number
 }
 export function generateComposition(mode: Mode, options: {
   bpm?: number; root?: number; scale?: string; complexity?: number; seed?: number;
+  richInstruments?: boolean; musicalArrangement?: boolean;
 } = {}): Composition {
   const bpm = clamp(options.bpm ?? 108, 45, 180);
   const root = options.root ?? 60;
   const scale = options.scale ?? "Lydian";
   const complexity = clamp(options.complexity ?? 0.55, 0.1, 1);
   const seed = options.seed ?? 0.314159;
+  const richInstruments = options.richInstruments ?? true;
+  const musicalArrangement = options.musicalArrangement ?? true;
   const beat = 60 / bpm;
   const bars = 8;
   const steps = bars * 8;
@@ -70,11 +76,11 @@ export function generateComposition(mode: Mode, options: {
     const note = scaleNote(value, root, scale);
     const beatInBar = step % 8;
     const bar = Math.floor(step / 8);
-    const phraseAccent = beatInBar === 0 ? 1.22 : beatInBar === 4 ? 1.08 : 1;
-    const cadenceAccent = bar === 7 && beatInBar >= 4 ? 1.14 : 1;
+    const phraseAccent = musicalArrangement ? (beatInBar === 0 ? 1.42 : beatInBar === 4 ? 1.16 : 1) : 1;
+    const cadenceAccent = musicalArrangement && bar === 7 && beatInBar >= 4 ? 1.3 : 1;
     const phraseVelocity = clamp(velocity * phraseAccent * cadenceAccent, 0.08, 0.92);
-    const phraseLength = length * (beatInBar === 0 ? 1.12 : beatInBar === 7 ? 0.78 : 1);
-    events.push({ time: step * beat / 2, duration: phraseLength * beat, frequency: midiHz(note), velocity: phraseVelocity, waveform: wave, pan: Math.sin(step * 0.37) * 0.55, voice: "lead" });
+    const phraseLength = length * (musicalArrangement ? (beatInBar === 0 ? 1.28 : beatInBar === 7 ? 0.68 : 1) : 1);
+    events.push({ time: step * beat / 2, duration: phraseLength * beat, frequency: midiHz(note), velocity: phraseVelocity, waveform: wave, pan: Math.sin(step * 0.37) * 0.55, voice: "lead", rich: richInstruments });
   };
   if (mode === "euclidean") {
     const pulses = Math.round(steps * (0.08 + complexity * 0.42));
@@ -125,7 +131,8 @@ export function generateComposition(mode: Mode, options: {
       }
     }
   }
-  // Add a restrained harmonic foundation: four two-bar chords and bass pulses.
+  // Optional harmonic foundation: four two-bar chords and bass pulses.
+  if (musicalArrangement) {
   const scaleNotes = SCALES[scale] ?? SCALES.Lydian;
   const progression = scale === "Minor" ? [0, 5, 2, 6] : [0, 4, 5, 3];
   for (let section = 0; section < 4; section++) {
@@ -150,6 +157,7 @@ export function generateComposition(mode: Mode, options: {
       events.push({ time: bassTime + 2 * beat, duration: 1.25 * beat, frequency: midiHz(chordRoot - 12), velocity: 0.15, waveform: "triangle", pan: 0.08, voice: "bass" });
     }
   }
+  }
   events.sort((a, b) => a.time - b.time);
-  return { events, duration, values, label: mode };
+  return { events, duration, values, label: mode, richInstruments, musicalArrangement };
 }
