@@ -132,68 +132,72 @@ export function generateComposition(mode: Mode, options: {
       }
     }
   }
-  // Musical expression is a composed eight-bar form, not extra random fills.
-  // The source data supplies the motif pitches; the arrangement develops that
-  // motif through repetition, variation, a denser climax and a resolved ending.
+  // A recognizable four-note motif is stated, transformed, intensified, then
+  // recalled. The mathematical sequence chooses its intervals; the form chooses
+  // when and how those intervals return.
   if (musicalExpression && mode !== "shepard") {
     const scaleNotes = SCALES[scale] ?? SCALES.Lydian;
-    const source = values.length ? values : Array.from({length: steps}, (_, i) => i / steps);
+    const source = values.length ? values : Array.from({ length: steps }, (_, i) => i / steps);
     const degreeAt = (step: number) => {
       const raw = source[step % source.length] ?? 0.5;
-      // Blend the mathematical value with its position so binary sources such
-      // as Euclidean rhythms still produce a varied, scale-constrained motif.
       const shaped = clamp(raw * 0.68 + (step % 8) / 7 * 0.32, 0, 0.999);
       return Math.floor(shaped * scaleNotes.length);
     };
-    const motif = [0, 2, 4, 6].map(step => degreeAt(step));
-    const rhythmByBar = [
-      [0, 3, 6],       // 1: sparse introduction
-      [0, 2, 5, 7],    // 2: state the motif
-      [0, 2, 4, 6],    // 3: develop it
-      [0, 1, 4, 6, 7], // 4: more motion
-      [0, 1, 2, 3, 4, 5, 6, 7], // 5: climax begins
-      [0, 1, 2, 3, 4, 5, 6, 7], // 6: sustain the climax
-      [0, 3, 6],       // 7: release
-      [0, 4]          // 8: final cadence
-    ];
-    const sectionGain = [0.48, 0.58, 0.68, 0.78, 1.0, 0.94, 0.62, 0.42];
-    // Replace the unstructured data-to-note stream with a deliberate lead line.
+    const motif = [0, 2, 4, 6].map(degreeAt);
+    const sectionGain = [0.44, 0.52, 0.64, 0.72, 0.96, 0.9, 0.58, 0.38];
     for (let i = events.length - 1; i >= 0; i--) {
       if ((events[i].voice ?? "lead") === "lead") events.splice(i, 1);
     }
-    for (let bar = 0; bar < 8; bar++) {
-      const rhythm = rhythmByBar[bar];
-      rhythm.forEach((slot, noteIndex) => {
-        const motifIndex = noteIndex % motif.length;
-        let degree = motif[motifIndex];
-        if (bar === 2 || bar === 3) {
-          // Development: alter one motif tone at a time, retaining its identity.
-          degree = (degree + (noteIndex % 2 === 0 ? 1 : 0)) % scaleNotes.length;
-        } else if (bar === 4 || bar === 5) {
-          // Climax: use the motif in a higher register and let its contour rise.
-          degree = (degree + Math.floor(noteIndex / 3)) % scaleNotes.length;
-        } else if (bar >= 6) {
-          // Ending: reduce movement and guide the final notes home.
-          degree = bar === 7 && noteIndex === rhythm.length - 1 ? 0 : motif[motifIndex];
-        }
-        const octave = bar >= 4 && bar <= 5 ? 2 : 1;
-        const midi = root + octave * 12 + scaleNotes[degree];
-        const isFinal = bar === 7 && noteIndex === rhythm.length - 1;
-        const isClimax = bar === 4 || bar === 5;
-        const isDownbeat = slot === 0;
-        const velocity = clamp(sectionGain[bar] * (isDownbeat ? 0.92 : 0.66) * (isClimax ? 1.08 : 1), 0.08, 0.92);
-        const durationBeats = isFinal ? 1.85 : isClimax ? 0.42 : slot === 7 ? 0.34 : 0.58;
-        events.push({
-          time: bar * 4 * beat + slot * 0.5 * beat,
-          duration: durationBeats * beat,
-          frequency: midiHz(midi),
-          velocity,
-          waveform: bar >= 4 && bar <= 5 ? "triangle" : "sine",
-          pan: Math.sin((bar * 8 + slot) * 0.23) * 0.28,
-          voice: "lead"
-        });
+    const addLead = (bar: number, slot: number, degree: number, opts: {
+      octave?: number; velocity?: number; durationBeats?: number; wave?: OscillatorType;
+    } = {}) => {
+      const midi = root + (opts.octave ?? 1) * 12 + scaleNotes[((degree % scaleNotes.length) + scaleNotes.length) % scaleNotes.length];
+      events.push({
+        time: bar * 4 * beat + slot * 0.5 * beat,
+        duration: (opts.durationBeats ?? 0.62) * beat,
+        frequency: midiHz(midi),
+        velocity: clamp(opts.velocity ?? sectionGain[bar] * 0.78, 0.06, 0.94),
+        waveform: opts.wave ?? "sine",
+        pan: Math.sin((bar * 8 + slot) * 0.23) * 0.24,
+        voice: "lead"
       });
+    };
+
+    // A: statement. The same four-note contour spans bars 1 and 2.
+    addLead(0, 0, motif[0], { velocity: sectionGain[0] * 0.9, durationBeats: 1.05 });
+    addLead(0, 4, motif[1], { velocity: sectionGain[0] * 0.78, durationBeats: 0.8 });
+    addLead(1, 0, motif[2], { velocity: sectionGain[1] * 0.86, durationBeats: 1.0 });
+    addLead(1, 4, motif[3], { velocity: sectionGain[1] * 0.82, durationBeats: 0.9 });
+
+    // B: development. Keep the motif's contour but vary intervals and rhythm.
+    const development = [
+      { bar: 2, slots: [0, 2, 5, 7], degrees: [motif[0], motif[1] + 1, motif[2], motif[3]] },
+      { bar: 3, slots: [0, 1, 4, 6, 7], degrees: [motif[0], motif[1], motif[2] + 1, motif[3], motif[2]] }
+    ];
+    for (const phrase of development) {
+      phrase.slots.forEach((slot, i) => addLead(phrase.bar, slot, phrase.degrees[i], {
+        velocity: sectionGain[phrase.bar] * (slot === 0 ? 0.92 : 0.74),
+        durationBeats: 0.42 + (i % 2) * 0.12
+      }));
     }
+
+    // C: climax. The motif is sequenced more quickly in a higher register.
+    const climaxContour = [motif[0], motif[1], motif[2] + 1, motif[3] + 1, motif[2], motif[3], motif[1] + 1, motif[3] + 2];
+    for (const bar of [4, 5]) {
+      climaxContour.forEach((degree, i) => addLead(bar, i, degree + (bar === 5 ? 1 : 0), {
+        octave: 2,
+        velocity: sectionGain[bar] * (i === 0 || i === 4 ? 0.96 : 0.82),
+        durationBeats: 0.38,
+        wave: "triangle"
+      }));
+    }
+
+    // D: reprise and cadence. Recall the opening rhythm and contour, then
+    // replace the final motif tone with the tonic and let it ring to bar end.
+    addLead(6, 0, motif[0], { velocity: sectionGain[6] * 0.9, durationBeats: 1.0 });
+    addLead(6, 4, motif[1], { velocity: sectionGain[6] * 0.78, durationBeats: 0.85 });
+    addLead(7, 0, motif[2], { velocity: sectionGain[7] * 0.82, durationBeats: 1.0 });
+    addLead(7, 4, 0, { velocity: 0.48, durationBeats: 1.95, wave: "triangle" });
   }
   // Optional harmonic foundation: four two-bar chords and bass pulses.
   if (musicalArrangement) {
