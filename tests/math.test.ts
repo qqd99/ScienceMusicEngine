@@ -38,6 +38,19 @@ describe("mathematical generators", () => {
     expect(lead.some(event => event.velocity > 0.5)).toBe(true);
     expect(lead.every(event => event.duration > 0)).toBe(true);
   });
+  it("can disable the harmonic arrangement and retain only the mathematical voice", () => {
+    const plain = generateComposition("mandelbrot", { musicalArrangement: false });
+    expect(plain.events.every(event => event.voice === "lead")).toBe(true);
+    expect(plain.musicalArrangement).toBe(false);
+  });
+  it("records the rich-instrument feature flag deterministically", () => {
+    const rich = generateComposition("mandelbrot", { richInstruments: true });
+    const dry = generateComposition("mandelbrot", { richInstruments: false });
+    expect(rich.richInstruments).toBe(true);
+    expect(dry.richInstruments).toBe(false);
+    expect(rich.values).toEqual(dry.values);
+    expect(rich.events).toEqual(dry.events);
+  });
   it("creates bounded, repeatable compositions", () => {
     const a = generateComposition("chaos", { seed: 0.25 });
     const b = generateComposition("chaos", { seed: 0.25 });
