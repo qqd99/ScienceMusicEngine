@@ -90,6 +90,74 @@ export function resolveInstrumentEvents(composition: Composition, instruments: I
   return events.sort((a, b) => a.time - b.time);
 }
 
+export type ConductorSection = "beginning" | "development" | "climax" | "ending";
+type ConductorVoice = "lead" | "answer" | "texture" | "bass" | "pad" | "percussion";
+
+const CONDUCTOR_ENVELOPES: Record<ConductorVoice, readonly number[]> = {
+  lead:       [0.82, 0.9, 0.9, 0.96, 1.08, 1.02, 0.84, 0.68],
+  answer:     [0, 0, 0.3, 0.55, 0.86, 0.96, 0.34, 0],
+  texture:    [0, 0, 0.18, 0.42, 0.72, 0.82, 0.26, 0],
+  bass:       [0.38, 0.52, 0.68, 0.85, 1.05, 0.98, 0.62, 0.22],
+  pad:        [0.25, 0.38, 0.58, 0.8, 1, 0.95, 0.65, 0.28],
+  percussion: [0, 0.06, 0.22, 0.48, 0.9, 0.95, 0.18, 0]
+};
+
+const CONDUCTOR_THRESHOLDS: Record<ConductorVoice, number> = {
+  lead: 0.08, answer: 0.08, texture: 0.08, bass: 0.08, pad: 0.08, percussion: 0.08
+};
+
+export function getConductorSection(progress: number): ConductorSection {
+  const phase = Math.max(0, Math.min(0.999999, Number.isFinite(progress) ? progress : 0));
+  if (phase < 0.25) return "beginning";
+  if (phase < 0.5) return "development";
+  if (phase < 0.75) return "climax";
+  return "ending";
+}
+
+function conductorLevel(voice: ConductorVoice, progress: number): number {
+  const position = Math.max(0, Math.min(0.999999, progress)) * 8;
+  const bar = Math.floor(position);
+  const withinBar = position - bar;
+  const curve = CONDUCTOR_ENVELOPES[voice];
+  const next = curve[Math.min(7, bar + 1)];
+  return curve[bar] + (next - curve[bar]) * withinBar;
+}
+
+/**
+ * Shapes the ensemble across an eight-bar arc. Each voice has its own entrance,
+ * build, peak and release. This is pure and deterministic, so live playback
+ * and OfflineAudioContext exports use exactly the same event list.
+ */
+export function applyEnsembleConductor(events: NoteEvent[], duration: number, enabled = true): NoteEvent[] {
+  if (!enabled || duration <= 0) return events.map(event => ({ ...event }));
+  const conducted: NoteEvent[] = [];
+  for (const event of events) {
+    const voice = (event.voice ?? "lead") as ConductorVoice;
+    const curve = CONDUCTOR_ENVELOPES[voice];
+    if (!curve) {
+      conducted.push({ ...event });
+      continue;
+    }
+    const progress = Math.max(0, Math.min(0.999999, event.time / duration));
+    const intensity = conductorLevel(voice, progress);
+    if (intensity < CONDUCTOR_THRESHOLDS[voice]) continue;
+    conducted.push({
+      ...event,
+      velocity: Math.max(0.001, Math.min(1, event.velocity * intensity))
+    });
+  }
+  return conducted.sort((a, b) => a.time - b.time);
+}
+
+export function preparePlaybackEvents(
+  composition: Composition,
+  instruments: InstrumentSettings,
+  conductorEnabled = true
+): NoteEvent[] {
+  const resolved = resolveInstrumentEvents(composition, instruments);
+  return applyEnsembleConductor(resolved, composition.duration, conductorEnabled);
+}
+
 function scheduleInstrumentLayer(
   context: BaseAudioContext,
   event: NoteEvent,
@@ -248,7 +316,8 @@ export class MusicPlayer {
   private instruments: InstrumentSettings = { ...DEFAULT_INSTRUMENTS };
   private profile: SoundProfile = DEFAULT_SOUND_PROFILE;
   private levels: InstrumentLevels = { ...DEFAULT_INSTRUMENT_LEVELS };
-  async play(composition: Composition, volume = 1.15, instruments: InstrumentSettings = DEFAULT_INSTRUMENTS, profile: SoundProfile = DEFAULT_SOUND_PROFILE, levels: InstrumentLevels = DEFAULT_INSTRUMENT_LEVELS): Promise<void> {
+  private conductorEnabled = true;
+  async play(composition: Composition, volume = 1.15, instruments: InstrumentSettings = DEFAULT_INSTRUMENTS, profile: SoundProfile = DEFAULT_SOUND_PROFILE, levels: InstrumentLevels = DEFAULT_INSTRUMENT_LEVELS, conductorEnabled = true): Promise<void> {
     this.stop();
     const Context = window.AudioContext;
     this.context ??= new Context();
@@ -258,7 +327,8 @@ export class MusicPlayer {
     this.instruments = { ...instruments };
     this.profile = profile;
     this.levels = { ...levels };
-    this.playbackEvents = resolveInstrumentEvents(composition, this.instruments);
+    this.conductorEnabled = conductorEnabled;
+    this.playbackEvents = preparePlaybackEvents(composition, this.instruments, this.conductorEnabled);
     this.master = ctx.createGain();
     this.master.gain.value = Math.max(0, Math.min(1.5, volume));
     this.compressor = ctx.createDynamicsCompressor();
@@ -351,7 +421,7 @@ export class MusicPlayer {
     osc.start(at);
     osc.stop(at + event.duration + 0.03);
   }
-  update(composition: Composition, volume = 1.15, instruments: InstrumentSettings = this.instruments, profile: SoundProfile = this.profile, levels: InstrumentLevels = this.levels): void {
+  update(composition: Composition, volume = 1.15, instruments: InstrumentSettings = this.instruments, profile: SoundProfile = this.profile, levels: InstrumentLevels = this.levels, conductorEnabled = this.conductorEnabled): void {
     if (!this.playing || !this.context) return;
     const ctx = this.context;
     const now = ctx.currentTime;
@@ -370,7 +440,8 @@ export class MusicPlayer {
     this.instruments = { ...instruments };
     this.profile = profile;
     this.levels = { ...levels };
-    this.playbackEvents = resolveInstrumentEvents(composition, this.instruments);
+    this.conductorEnabled = conductorEnabled;
+    this.playbackEvents = preparePlaybackEvents(composition, this.instruments, this.conductorEnabled);
     this.cycleStart = now - phase * composition.duration;
     const elapsedInCycle = phase * composition.duration;
     this.cursor = this.playbackEvents.findIndex(event => event.time >= elapsedInCycle + 0.025);
@@ -410,7 +481,7 @@ export class MusicPlayer {
   get isPlaying(): boolean { return this.playing; }
 }
 
-export async function renderCompositionWav(composition: Composition, volume = 1.15, instruments: InstrumentSettings = DEFAULT_INSTRUMENTS, profile: SoundProfile = DEFAULT_SOUND_PROFILE, levels: InstrumentLevels = DEFAULT_INSTRUMENT_LEVELS): Promise<Blob> {
+export async function renderCompositionWav(composition: Composition, volume = 1.15, instruments: InstrumentSettings = DEFAULT_INSTRUMENTS, profile: SoundProfile = DEFAULT_SOUND_PROFILE, levels: InstrumentLevels = DEFAULT_INSTRUMENT_LEVELS, conductorEnabled = true): Promise<Blob> {
   const sampleRate = 44100;
   const tailSeconds = 1.25;
   const frameCount = Math.ceil((composition.duration + tailSeconds) * sampleRate);
@@ -426,7 +497,7 @@ export async function renderCompositionWav(composition: Composition, volume = 1.
   master.connect(compressor).connect(offline.destination);
 
   const dedicatedEnabled = Object.values(instruments).some(Boolean);
-  const playbackEvents = resolveInstrumentEvents(composition, instruments);
+  const playbackEvents = preparePlaybackEvents(composition, instruments, conductorEnabled);
   for (const event of playbackEvents) {
     const voice = event.voice ?? "lead";
     const at = Math.max(0, event.time);
