@@ -11,7 +11,7 @@ export const DEFAULT_INSTRUMENTS: InstrumentSettings = {
 };
 
 export function hasDedicatedInstruments(instruments: InstrumentSettings): boolean {
-  return hasDedicatedInstruments(instruments);
+  return Object.values(instruments).some(Boolean);
 }
 
 export function resolveInstrumentEvents(composition: Composition, instruments: InstrumentSettings): NoteEvent[] {
