@@ -175,6 +175,21 @@ describe("procedural instrument controls", () => {
     ))).toBe(true);
   });
 
+  it("uses the analog counterline when an unusually long rest makes it suitable", () => {
+    const events: NoteEvent[] = [
+      { time: 0, duration: 0.3, frequency: 440, velocity: 0.5, waveform: "sine", pan: 0, voice: "lead" },
+      { time: 3, duration: 0.3, frequency: 494, velocity: 0.5, waveform: "sine", pan: 0, voice: "lead" },
+      { time: 6, duration: 0.3, frequency: 523, velocity: 0.5, waveform: "sine", pan: 0, voice: "lead" },
+      { time: 1, duration: 0.5, frequency: 659, velocity: 0.2, waveform: "sawtooth", pan: 0.2, voice: "texture" }
+    ];
+    const session = new AdaptiveConductorSession(events, 32, {
+      piano: true, analog: true, plucked: false, cinematicBass: false, atmosphere: false
+    }, true);
+    const conducted = session.prepareAll();
+    expect(session.getDecision(0)!.roles).toContain("texture");
+    expect(conducted.some(event => event.voice === "texture")).toBe(true);
+  });
+
   it("prepares adaptive decisions phrase by phrase without duplicate events", () => {
     const events: NoteEvent[] = [
       { time: 0, duration: 0.5, frequency: 440, velocity: 0.5, waveform: "sine", pan: 0, voice: "lead" },
@@ -275,8 +290,11 @@ describe("procedural instrument controls", () => {
     const exportEvents = preparePlaybackEvents(composition, allInstruments, true);
     expect(liveEvents).toEqual(exportEvents);
     expect(liveEvents.some(event => event.voice === "answer")).toBe(true);
-    expect(liveEvents.some(event => event.voice === "texture")).toBe(true);
     expect(liveEvents.some(event => event.voice === "percussion" && event.time >= composition.duration * 0.5)).toBe(true);
+    const supportRoles = new Set(liveEvents
+      .filter(event => event.voice !== "lead")
+      .map(event => event.voice));
+    expect(supportRoles.size).toBeLessThanOrEqual(2);
   });
 
   it("applies a fixed +14 dB master output gain after compression", () => {

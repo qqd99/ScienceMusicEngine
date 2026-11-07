@@ -216,6 +216,19 @@ function eventBar(event: NoteEvent, barDuration: number): number {
   return Math.max(0, Math.min(7, Math.floor(event.time / barDuration)));
 }
 
+function eventFitsLeadGap(event: NoteEvent, lead: NoteEvent[], duration: number, beat: number): boolean {
+  const bar = eventBar(event, beat * 4);
+  const gaps = findLeadGaps(
+    lead.filter(note => eventBar(note, beat * 4) === bar),
+    duration, beat, 0.12
+  );
+  const margin = beat * 0.035;
+  return gaps.some(gap =>
+    event.time >= gap.start + margin &&
+    event.time + event.duration <= gap.end - margin
+  );
+}
+
 function instrumentAvailable(voice: ConductorRole, instruments?: InstrumentSettings): boolean {
   if (!instruments) return true;
   if (voice === "answer") return instruments.plucked;
