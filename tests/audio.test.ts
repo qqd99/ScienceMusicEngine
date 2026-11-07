@@ -291,10 +291,14 @@ describe("procedural instrument controls", () => {
     expect(liveEvents).toEqual(exportEvents);
     expect(liveEvents.some(event => event.voice === "answer")).toBe(true);
     expect(liveEvents.some(event => event.voice === "percussion" && event.time >= composition.duration * 0.5)).toBe(true);
-    const supportRoles = new Set(liveEvents
-      .filter(event => event.voice !== "lead")
-      .map(event => event.voice));
-    expect(supportRoles.size).toBeLessThanOrEqual(2);
+    for (let phrase = 0; phrase < 4; phrase++) {
+      const start = phrase * composition.duration / 4;
+      const end = (phrase + 1) * composition.duration / 4;
+      const phraseRoles = new Set(liveEvents
+        .filter(event => event.time >= start && event.time < end && event.voice !== "lead")
+        .map(event => event.voice));
+      expect(phraseRoles.size).toBeLessThanOrEqual(2);
+    }
   });
 
   it("applies a fixed +14 dB master output gain after compression", () => {

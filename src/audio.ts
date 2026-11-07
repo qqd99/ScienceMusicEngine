@@ -434,7 +434,7 @@ function selectConductorPhraseEvents(
         const kind = event.percussionKind ?? "kick";
         if (kind === "kick" && bassOwnsDownbeats.some(time => Math.abs(time - event.time) <= beat * 0.12)) return false;
         if (kind === "hat" && (analysis.density > 1.2 || analysis.gapRatio < 0.32)) return false;
-        if (kind === "snare" && analysis.density > 1.8) return false;
+        if (kind === "snare" && analysis.density > 2.2) return false;
         return true;
       });
       const kick = hits.find(event => (event.percussionKind ?? "kick") === "kick");
