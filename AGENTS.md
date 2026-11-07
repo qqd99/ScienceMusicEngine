@@ -53,8 +53,9 @@ The browser UI includes mathematical visualization, a moving playhead, tempo, co
 - Each instrument has its own ON/OFF control and independent 0–150% mixer level.
 - The output-volume slider controls live playback and WAV export (0–150%; current default is 115%). A compressor helps manage peaks.
 - WAV export uses `OfflineAudioContext` and produces stereo 16-bit, 44.1 kHz output.
-- The **Ensemble Conductor** has its own ON/OFF control. It shapes a performance arc across the eight bars: piano establishes the opening; supporting voices enter during development; the ensemble and percussion build in bars five and six; supporting layers retreat while the lead resolves.
-- The conductor uses deterministic, per-voice dynamic envelopes and start/end velocity values so sustained notes can swell or fade without being retriggered. The Shepard experiment retains its continuous-rise illusion.
+- The **Ensemble Conductor** has its own ON/OFF control and is a selective orchestrator, not merely a volume curve. Enabled instruments are available to it, not automatically active. It analyses lead density and actual rests, assigns sparse bass/pad/answer/counterline roles, and reserves percussion for the transition and climax.
+- Plucked answers and analog counterlines must fit genuine gaps in the lead. Bass marks selected harmonic anchors; pads frame selected structural moments; percussion yields low-frequency downbeats when bass owns them. Keep no more than two supporting roles intentionally layered beneath the lead at once.
+- Conductor selection and dynamics are deterministic and shared by live playback and OfflineAudioContext WAV export. Preserve the Shepard experiment's continuous layered illusion; do not add ordinary ensemble accompaniment to it.
 
 ### Critical instrument-routing behavior
 
@@ -105,29 +106,29 @@ After editing:
 
 ## 6. Current handoff / resume point
 
-The last user request in the preceding conversation was **“Do it”**, referring to a proposed **dynamic Ensemble Conductor** that makes instruments enter, build, peak, retreat, and interact across the composition's beginning, development, climax, and ending.
+The user auditioned the previous envelope-only Ensemble Conductor and reported: **“The conductor is not good, it just throwing everything in. It should decide when to play what and what thing suitable for the rhythm, even when every instrument are enable, not all of them should play.”**
 
-That implementation is already present on `main`. The current implementation includes:
+The required direction is now clear: replace volume-only orchestration with deterministic, rhythm-aware event selection. Enabled instruments are available to the conductor, not automatically active. It must inspect the actual lead rhythm, note density and rests; choose which supporting roles belong in each phrase; leave unsuitable parts silent; and keep live playback and WAV export identical.
 
-- A separate Ensemble Conductor toggle.
-- Per-voice envelopes for lead, answer, texture, bass, pad, and percussion.
-- Deterministic interpolation across the eight-bar arc.
-- Event start and end velocity shaping, including sustained-note automation.
-- Shared conductor processing for live playback and offline WAV export.
-- Tests for conductor sections, voice dynamics, and sustained-note behavior.
+The selective orchestration revision should follow these rules:
 
-**First next action:** do not immediately add another feature. Ask the user to audition the live app with Ensemble Conductor ON and OFF and evaluate whether the staged entrances, build, climax, and release are clearly audible and musically convincing. Ask what they hear if the result is not right, then adjust the implementation to that feedback.
+- Piano remains the mathematical lead.
+- Bass marks selected harmonic anchors and a cadence approach, rather than playing every candidate note.
+- Pads frame selected structural moments, not every chord change.
+- Plucked Strings answer only inside real lead rests.
+- Warm Analog contributes a rare counterline only when a sufficiently long gap exists.
+- Percussion supports the transition and climax, yields the downbeat when bass owns it, and avoids unnecessary hats over a dense melody.
+- At most two supporting roles should be intentionally layered beneath the lead at once.
+- The Shepard illusion must remain a special continuous texture, not an ordinary ensemble arrangement.
 
-If the user approves the conductor, discuss the next musical priority with them. Possible directions already discussed include improving instrument realism/expressiveness and deepening the ensemble's musical interaction. Do not assume which direction they want next.
+**Next action after the revision:** ask the user to audition the new conductor with all five instruments enabled and compare ON/OFF using the same mode and seed. Listen for whether the parts take turns, respect the melody's rests, and create a clear but uncluttered climax. Do not claim perceptual success based on tests alone. Ask for feedback before adding unrelated features.
 
-### Last verified repository snapshot
+### Historical repository snapshot
 
-- Snapshot checked: 2026-11-07.
-- Branch: `main`.
-- Latest commit at time of writing: `6c9190bca0875567c28b917da91b8994b21db861` — “Clarify instrument event routing and clean conductor documentation formatting”.
-- Latest GitHub Actions workflow run checked: run **#100**, completed with conclusion **success** for that commit. The workflow runs `npm install`, `npm test`, `npm run build`, then deploys GitHub Pages.
-- Current test files contain **34 test cases** in total (14 audio tests and 20 math tests) at this snapshot. Recount after future changes.
-- This is a historical snapshot, not a guarantee of the current state. Always check the latest commit and workflow run before relying on these values.
+- Before the selective-orchestration revision, the latest checked commit was `cacad25807847c955dc501afa659996cbe77484a` on `main`.
+- Its GitHub Actions workflow run **#101** completed successfully, including tests, build and GitHub Pages deployment.
+- The pre-revision test suite contained 34 cases (14 audio tests and 20 math tests).
+- These figures are historical. Always inspect the current branch head, tests and Actions run before relying on them; record the new exact commit and CI result after the revision is verified.
 
 ## 7. Documentation note
 

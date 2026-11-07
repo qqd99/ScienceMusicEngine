@@ -19,42 +19,90 @@ export function hasDedicatedInstruments(instruments: InstrumentSettings): boolea
   return Object.values(instruments).some(Boolean);
 }
 
+interface LeadGap {
+  bar: number;
+  start: number;
+  end: number;
+  source: NoteEvent;
+}
+
+/** Find real rests between melody notes, never inventing space by moving a note. */
+function findLeadGaps(lead: NoteEvent[], duration: number, beat: number, minimumGapBeats: number): LeadGap[] {
+  const barDuration = beat * 4;
+  const ordered = [...lead].sort((a, b) => a.time - b.time);
+  const gaps: LeadGap[] = [];
+  for (let index = 0; index < ordered.length; index++) {
+    const source = ordered[index];
+    const bar = Math.floor(source.time / barDuration);
+    if (bar < 0 || bar >= 8) continue;
+    const barEnd = Math.min(duration, (bar + 1) * barDuration);
+    const next = ordered[index + 1];
+    const nextInBar = next && Math.floor(next.time / barDuration) === bar ? next.time : barEnd;
+    const start = source.time + Math.max(0, source.duration);
+    const end = Math.min(nextInBar, barEnd);
+    if (end - start >= beat * minimumGapBeats) gaps.push({ bar, start, end, source });
+  }
+  return gaps;
+}
+
+function longestGapPerBar(gaps: LeadGap[]): Map<number, LeadGap> {
+  const selected = new Map<number, LeadGap>();
+  for (const gap of gaps) {
+    const current = selected.get(gap.bar);
+    if (!current || gap.end - gap.start > current.end - current.start) selected.set(gap.bar, gap);
+  }
+  return selected;
+}
+
 export function resolveInstrumentEvents(composition: Composition, instruments: InstrumentSettings): NoteEvent[] {
+  // Shepard layers are already a complete, carefully balanced sound event.
+  // Do not turn them into an ordinary ensemble or add sequence-derived bass/pads.
+  if (composition.label === "shepard") return composition.events.map(event => ({ ...event }));
+
   const events = [...composition.events];
   const lead = composition.events.filter(event => (event.voice ?? "lead") === "lead");
   if (!lead.length) return events;
   const beat = composition.duration / 32;
-  // Plucked strings answer selected lead phrases instead of doubling the melody.
+
+  // Supporting melodic parts are composed from actual rests in the lead.
+  // The conductor will later choose only a few of these candidates to perform.
+  const answerGaps = longestGapPerBar(findLeadGaps(lead, composition.duration, beat, 0.38));
   if (instruments.plucked) {
-    const answerSources = lead.filter((_, index) => index % 2 === 1);
-    answerSources.forEach((source, index) => {
-      const time = source.time + Math.min(source.duration * 0.72, beat * 0.58);
-      if (time >= composition.duration - beat * 0.15) return;
-      const interval = index % 2 === 0 ? -2 : 3;
+    for (const [bar, gap] of answerGaps) {
+      const gapLength = gap.end - gap.start;
+      const margin = beat * 0.08;
+      const time = gap.start + margin;
+      const duration = Math.min(beat * 0.34, gap.end - margin - time);
+      if (duration < beat * 0.2) continue;
+      const interval = bar % 2 === 0 ? -2 : 3;
       events.push({
-        time, duration: beat * 0.52,
-        frequency: source.frequency * Math.pow(2, interval / 12),
-        velocity: Math.max(0.055, source.velocity * 0.48),
-        waveform: "triangle", pan: source.pan * -0.8, voice: "answer"
+        time, duration,
+        frequency: gap.source.frequency * Math.pow(2, interval / 12),
+        velocity: Math.max(0.045, gap.source.velocity * 0.42),
+        waveform: "triangle", pan: gap.source.pan * -0.8, voice: "answer"
       });
-    });
+    }
   }
-  // Warm analog contributes a restrained counterline / sustained color.
+
+  // Analog is a rarer counterline: only long rests qualify, and only one
+  // candidate is created per bar. Dense passages naturally leave it silent.
+  const textureGaps = longestGapPerBar(findLeadGaps(lead, composition.duration, beat, 0.72));
   if (instruments.analog) {
-    for (let bar = 0; bar < 8; bar++) {
-      const time = bar * beat * 4 + beat * 1.5;
-      const source = lead.reduce((best, event) =>
-        Math.abs(event.time - time) < Math.abs(best.time - time) ? event : best, lead[0]);
-      if (time >= composition.duration - beat * 0.2) continue;
+    for (const [bar, gap] of textureGaps) {
+      const margin = beat * 0.1;
+      const time = gap.start + margin;
+      const duration = Math.min(beat * 0.68, gap.end - margin - time);
+      if (duration < beat * 0.38) continue;
       const interval = bar % 2 === 0 ? 7 : 12;
       events.push({
-        time, duration: beat * (bar === 7 ? 1.5 : 2.1),
-        frequency: source.frequency * Math.pow(2, interval / 12),
-        velocity: Math.max(0.035, source.velocity * 0.2),
+        time, duration,
+        frequency: gap.source.frequency * Math.pow(2, interval / 12),
+        velocity: Math.max(0.025, gap.source.velocity * 0.16),
         waveform: "sawtooth", pan: bar % 2 === 0 ? 0.24 : -0.24, voice: "texture"
       });
     }
   }
+
   const hasBass = events.some(event => event.voice === "bass");
   const hasPads = events.some(event => event.voice === "pad");
 
@@ -95,15 +143,15 @@ type ConductorVoice = "lead" | "answer" | "texture" | "bass" | "pad" | "percussi
 
 const CONDUCTOR_ENVELOPES: Record<ConductorVoice, readonly number[]> = {
   lead:       [0.82, 0.9, 0.9, 0.96, 1.08, 1.02, 0.84, 0.68],
-  answer:     [0, 0, 0.3, 0.55, 0.86, 0.96, 0.34, 0],
-  texture:    [0, 0, 0.18, 0.42, 0.72, 0.82, 0.26, 0],
-  bass:       [0.38, 0.52, 0.68, 0.85, 1.05, 0.98, 0.62, 0.22],
-  pad:        [0.25, 0.38, 0.58, 0.8, 1, 0.95, 0.65, 0.28],
-  percussion: [0, 0.06, 0.22, 0.48, 0.9, 0.95, 0.18, 0]
+  answer:     [0, 0, 0.56, 0.48, 0.08, 0.08, 0.54, 0.08],
+  texture:    [0.08, 0.16, 0.32, 0.65, 0.25, 0.4, 0.12, 0.08],
+  bass:       [0.62, 0.18, 0.72, 0.18, 0.82, 0.58, 0.32, 0.18],
+  pad:        [0.48, 0.3, 0.08, 0.08, 0.08, 0.08, 0.42, 0.3],
+  percussion: [0, 0.05, 0.12, 0.45, 0.85, 0.72, 0.12, 0]
 };
 
 const CONDUCTOR_THRESHOLDS: Record<ConductorVoice, number> = {
-  lead: 0.08, answer: 0.08, texture: 0.08, bass: 0.08, pad: 0.08, percussion: 0.08
+  lead: 0.08, answer: 0.06, texture: 0.06, bass: 0.06, pad: 0.06, percussion: 0.06
 };
 
 export function getConductorSection(progress: number): ConductorSection {
@@ -123,16 +171,108 @@ function conductorLevel(voice: ConductorVoice, progress: number): number {
   return curve[bar] + (next - curve[bar]) * withinBar;
 }
 
+function eventBar(event: NoteEvent, barDuration: number): number {
+  return Math.max(0, Math.min(7, Math.floor(event.time / barDuration)));
+}
+
+function eventFitsLeadGap(event: NoteEvent, lead: NoteEvent[], duration: number, beat: number): boolean {
+  const bar = eventBar(event, beat * 4);
+  const gaps = findLeadGaps(
+    lead.filter(note => eventBar(note, beat * 4) === bar),
+    duration, beat, 0.12
+  );
+  const margin = beat * 0.035;
+  return gaps.some(gap =>
+    event.time >= gap.start + margin &&
+    event.time + event.duration <= gap.end - margin
+  );
+}
+
+function instrumentAvailable(voice: ConductorVoice, instruments?: InstrumentSettings): boolean {
+  if (!instruments) return true;
+  if (voice === "answer") return instruments.plucked;
+  if (voice === "texture") return instruments.analog;
+  if (voice === "bass") return instruments.cinematicBass;
+  if (voice === "pad") return instruments.atmosphere;
+  return true;
+}
+
 /**
- * Shapes the ensemble across an eight-bar arc. Each voice has its own entrance,
- * build, peak and release. This is pure and deterministic, so live playback
- * and OfflineAudioContext exports use exactly the same event list.
+ * Selects a small, rhythm-aware set of supporting parts rather than playing
+ * every enabled layer. Piano keeps the mathematical lead; bass marks selected
+ * harmonic anchors; pads frame the opening and resolution; plucked answers and
+ * analog counterlines must fit real melody rests; percussion is reserved for
+ * the transition and climax. The same deterministic event list feeds live and
+ * offline playback.
  */
-export function applyEnsembleConductor(events: NoteEvent[], duration: number, enabled = true): NoteEvent[] {
+export function applyEnsembleConductor(
+  events: NoteEvent[],
+  duration: number,
+  enabled = true,
+  instruments?: InstrumentSettings
+): NoteEvent[] {
   if (!enabled || duration <= 0) return events.map(event => ({ ...event }));
+
+  const beat = duration / 32;
+  const barDuration = beat * 4;
+  const lead = events.filter(event => (event.voice ?? "lead") === "lead");
+  const selectedTextureBar = [3, 5].find(bar =>
+    instrumentAvailable("texture", instruments) &&
+    events.some(event =>
+      event.voice === "texture" &&
+      eventBar(event, barDuration) === bar &&
+      eventFitsLeadGap(event, lead, duration, beat)
+    )
+  );
+  const bassDownbeatBars = new Set<number>();
+  const bassEventsByBar = new Set<number>();
+  const answerBars = new Set<number>();
+  const percussionCounts = new Map<number, number>();
   const conducted: NoteEvent[] = [];
+
   for (const event of events) {
     const voice = (event.voice ?? "lead") as ConductorVoice;
+    const bar = eventBar(event, barDuration);
+    const barStart = bar * barDuration;
+    const offset = event.time - barStart;
+
+    if (voice === "lead") {
+      // The mathematical melody remains the foreground voice.
+    } else if (voice === "answer") {
+      if (!instrumentAvailable(voice, instruments) || ![2, 6].includes(bar) ||
+          answerBars.has(bar) || !eventFitsLeadGap(event, lead, duration, beat)) continue;
+      answerBars.add(bar);
+    } else if (voice === "texture") {
+      if (!instrumentAvailable(voice, instruments) || bar !== selectedTextureBar ||
+          !eventFitsLeadGap(event, lead, duration, beat)) continue;
+      // At most one counterline phrase per composition.
+      if (conducted.some(item => item.voice === "texture")) continue;
+    } else if (voice === "bass") {
+      if (!instrumentAvailable(voice, instruments)) continue;
+      const rootAnchor = [0, 2, 4].includes(bar) && Math.abs(offset) <= beat * 0.12;
+      const cadenceApproach = bar === 5 && Math.abs(offset - beat * 3.5) <= beat * 0.12;
+      if (!rootAnchor && !cadenceApproach) continue;
+      const key = cadenceApproach ? 8 : bar;
+      if (bassEventsByBar.has(key)) continue;
+      bassEventsByBar.add(key);
+      if (rootAnchor) bassDownbeatBars.add(bar);
+    } else if (voice === "pad") {
+      if (!instrumentAvailable(voice, instruments) || ![0, 6].includes(bar)) continue;
+    } else if (voice === "percussion") {
+      if (![3, 4, 5].includes(bar)) continue;
+      const kind = event.percussionKind ?? "kick";
+      const hitCount = percussionCounts.get(bar) ?? 0;
+      if (hitCount >= 2) continue;
+      if (kind === "kick") {
+        if (Math.abs(offset) > beat * 0.12 || bassDownbeatBars.has(bar)) continue;
+      } else if (kind === "snare") {
+        if (Math.abs(offset - beat * 2) > beat * 0.12) continue;
+      } else if (kind === "hat") {
+        if (bar !== 5 || !eventFitsLeadGap(event, lead, duration, beat)) continue;
+      }
+      percussionCounts.set(bar, hitCount + 1);
+    }
+
     const curve = CONDUCTOR_ENVELOPES[voice];
     if (!curve) {
       conducted.push({ ...event });
@@ -158,7 +298,10 @@ export function preparePlaybackEvents(
   conductorEnabled = true
 ): NoteEvent[] {
   const resolved = resolveInstrumentEvents(composition, instruments);
-  return applyEnsembleConductor(resolved, composition.duration, conductorEnabled);
+  // The Shepard illusion is a special continuous texture, not an eight-bar ensemble.
+  if (composition.label === "shepard") return resolved;
+  const available = hasDedicatedInstruments(instruments) ? instruments : undefined;
+  return applyEnsembleConductor(resolved, composition.duration, conductorEnabled, available);
 }
 
 function scheduleInstrumentLayer(
