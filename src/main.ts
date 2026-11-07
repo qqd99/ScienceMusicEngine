@@ -91,7 +91,7 @@ function drawPlayhead(progress: number) {
 }
 function animatePlayhead() {
   if (!player.isPlaying) { cancelAnimationFrame(animationFrame); animationFrame=0; return; }
-  drawPlayhead(player.getProgress());
+  render();
   animationFrame=requestAnimationFrame(animatePlayhead);
 }
 function updateLiveComposition() {
@@ -114,13 +114,13 @@ $("#play").addEventListener("click",async()=>{
   const button=$("#play") as HTMLButtonElement;
   if(player.isPlaying){
     player.stop();playing=false;cancelAnimationFrame(animationFrame);animationFrame=0;
-    button.innerHTML="<span>▶</span> PLAY EXPERIMENT";button.classList.remove("is-playing");
+    button.innerHTML="<span>▶</span> PLAY EXPERIMENT";button.classList.remove("is-playing");button.setAttribute("aria-pressed","false");
     $("#status").textContent="STOPPED";$("#status-light").classList.remove("on");
     return;
   }
   try {
     await player.play(generateComposition(mode,options()));playing=true;
-    button.innerHTML="<span>■</span> STOP EXPERIMENT";button.classList.add("is-playing");
+    button.innerHTML="<span>■</span> STOP EXPERIMENT";button.classList.add("is-playing");button.setAttribute("aria-pressed","true");
     $("#status").textContent="PLAYING · LIVE 8-BAR SEQUENCE";$("#status-light").classList.add("on");
     animatePlayhead();
   } catch(error){$("#status").textContent="AUDIO COULD NOT START";console.error(error);}
