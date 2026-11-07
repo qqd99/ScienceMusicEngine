@@ -6,7 +6,7 @@ export interface NoteEvent {
   velocity: number;
   waveform: OscillatorType;
   pan: number;
-  voice?: "lead" | "bass" | "pad" | "percussion";
+  voice?: "lead" | "answer" | "texture" | "bass" | "pad" | "percussion";
   percussionKind?: "kick" | "snare" | "hat";
 }
 export interface Composition {
