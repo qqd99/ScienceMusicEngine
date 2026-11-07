@@ -3,7 +3,8 @@ function schedulePercussion(
   context: BaseAudioContext,
   event: NoteEvent,
   at: number,
-  destination: AudioNode
+  destination: AudioNode,
+  onEnded?: () => void
 ): AudioScheduledSourceNode {
   const kind = event.percussionKind ?? "kick";
   const gain = context.createGain();
@@ -44,7 +45,7 @@ function schedulePercussion(
   }
   pan.pan.setValueAtTime(event.pan, at);
   source.connect(filter).connect(gain).connect(pan).connect(destination);
-  source.onended = () => { source.disconnect(); filter.disconnect(); gain.disconnect(); pan.disconnect(); };
+  source.onended = () => { source.disconnect(); filter.disconnect(); gain.disconnect(); pan.disconnect(); onEnded?.(); };
   source.start(at);
   source.stop(at + duration + 0.005);
   return source;
@@ -99,9 +100,9 @@ export class MusicPlayer {
     const ctx = this.context, master = this.master;
     if (!ctx || !master || this.active.size >= 48) return;
     if (event.voice === "percussion") {
-      const drum = schedulePercussion(ctx, event, at, master);
+      let drum!: AudioScheduledSourceNode;
+      drum = schedulePercussion(ctx, event, at, master, () => this.active.delete(drum));
       this.active.add(drum);
-      drum.onended = () => { this.active.delete(drum); drum.disconnect(); };
       return;
     }
     const osc = ctx.createOscillator();
