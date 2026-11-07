@@ -11,6 +11,7 @@ let animationFrame = 0;
 let currentSeed = 0.314159;
 let richInstrumentsEnabled = true;
 let musicalArrangementEnabled = true;
+let musicalExpressionEnabled = true;
 const names: Record<Mode, string> = {
   mandelbrot: "Mandelbrot explorer", euclidean: "Euclidean rhythms", chaos: "Chaos theory", shepard: "Shepard illusion"
 };
@@ -38,7 +39,7 @@ app.innerHTML = `
           <label>Complexity <output id="complexity-value">55%</output><input id="complexity" type="range" min="10" max="100" value="55"/></label>
           <label>Root note<select id="root"><option value="60">C</option><option value="62">D</option><option value="64">E</option><option value="65">F</option><option value="67">G</option><option value="69">A</option><option value="71">B</option></select></label>
           <label>Harmonic color<select id="scale"><option>Lydian</option><option>Major</option><option>Minor</option><option>Pentatonic</option></select></label>
-        </div><div class="feature-controls"><div class="feature-heading">04 / SOUND FEATURES</div><div class="feature-buttons"><button id="toggle-rich" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>RICH INSTRUMENTS</b><small>Overtones · brighter timbre</small></span><strong>ON</strong></button><button id="toggle-arrangement" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>MUSICAL ARRANGEMENT</b><small>Bass · chords · phrase accents</small></span><strong>ON</strong></button></div></div><div class="seed-row"><span>DETERMINISTIC SEED</span><code id="seed-value">0.314159</code><button id="random-seed" class="text-button">↻ NEW SEED</button></div></div>
+        </div><div class="feature-controls"><div class="feature-heading">04 / SOUND FEATURES</div><div class="feature-buttons"><button id="toggle-rich" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>RICH INSTRUMENTS</b><small>Overtones · brighter timbre</small></span><strong>ON</strong></button><button id="toggle-arrangement" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>MUSICAL ARRANGEMENT</b><small>Bass · chords · phrase accents</small></span><strong>ON</strong></button><button id="toggle-expression" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>MUSICAL EXPRESSION</b><small>Dynamic arc · motifs · rising fills</small></span><strong>ON</strong></button></div></div><div class="seed-row"><span>DETERMINISTIC SEED</span><code id="seed-value">0.314159</code><button id="random-seed" class="text-button">↻ NEW SEED</button></div></div>
         <div class="transport"><div class="transport-left"><button id="play" class="play-button"><span>▶</span> PLAY EXPERIMENT</button><button id="export-wav" class="export-button">↓ EXPORT WAV</button></div><div class="transport-status"><span class="status-light" id="status-light"></span><span id="status">READY TO GENERATE</span></div></div>
       </section>
     </section>
@@ -47,7 +48,7 @@ app.innerHTML = `
 const $ = <T extends HTMLElement>(selector: string) => app.querySelector<T>(selector)!;
 const canvas = $("#viz") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
-function options() { return { bpm: Number(($("#bpm") as HTMLInputElement).value), complexity: Number(($("#complexity") as HTMLInputElement).value) / 100, root: Number(($("#root") as HTMLSelectElement).value), scale: ($("#scale") as HTMLSelectElement).value, seed: currentSeed, richInstruments: richInstrumentsEnabled, musicalArrangement: musicalArrangementEnabled }; }
+function options() { return { bpm: Number(($("#bpm") as HTMLInputElement).value), complexity: Number(($("#complexity") as HTMLInputElement).value) / 100, root: Number(($("#root") as HTMLSelectElement).value), scale: ($("#scale") as HTMLSelectElement).value, seed: currentSeed, richInstruments: richInstrumentsEnabled, musicalArrangement: musicalArrangementEnabled, musicalExpression: musicalExpressionEnabled }; }
 function render() {
   const comp = generateComposition(mode, options());
   const w = canvas.width, h = canvas.height;
@@ -115,6 +116,11 @@ function setFeatureButton(id: string, enabled: boolean) {
 $("#toggle-rich").addEventListener("click", () => {
   richInstrumentsEnabled = !richInstrumentsEnabled;
   setFeatureButton("toggle-rich", richInstrumentsEnabled);
+  render(); updateLiveComposition();
+});
+$("#toggle-expression").addEventListener("click", () => {
+  musicalExpressionEnabled = !musicalExpressionEnabled;
+  setFeatureButton("toggle-expression", musicalExpressionEnabled);
   render(); updateLiveComposition();
 });
 $("#toggle-arrangement").addEventListener("click", () => {
