@@ -123,12 +123,13 @@ The requested refinement is now implemented as a **16-bar form** with four conne
 
 The user reported that the complete mix was barely audible even at maximum output volume and requested at least +14 dB. The master output now applies a fixed +14 dB gain after the existing compressor, followed by a fast final peak limiter. Keep this shared master chain identical for live playback and offline WAV export. The UI should make the boost visible. Do not claim a calibrated acoustic SPL or LUFS target; actual playback level still depends on device output and content.
 
-### Last verified adaptive-conductor implementation
+### Last verified 16-bar composition revision
 
-- Previous verified adaptive-conductor code commit: `3432696c41961559d64a086ea17ddfa1f10db8ab` — “Preserve percussion through sustained high-energy phrases”.
-- GitHub Actions run **#109** completed successfully, including `npm install`, `npm test`, `npm run build`, Pages artifact upload and deployment.
-- The verified suite contains **41 test cases** (21 audio tests and 20 mathematics tests).
-- The implementation uses `AdaptiveConductorSession` for phrase-by-phrase decisions in both live playback and offline rendering.
+- Main 16-bar composition commit: `a5cbdbc1a477afd661caedf2867cc9433ab17ac7` — “Extend compositions to 30 seconds with connected musical transitions”.
+- Follow-up verification fix: `c23070a9c7b393bf0a8c0d0db5a1f50b9163f5e2` — climax percussion emphasis and eight-phrase parity checks.
+- GitHub Actions run **#112** completed successfully, including `npm install`, `npm test`, `npm run build`, Pages artifact upload and deployment.
+- The verified suite contains **42 test cases** (21 audio tests and 21 mathematics tests).
+- The default composition is 16 bars at 128 BPM (30 seconds), with eight two-bar adaptive-conductor decisions and audible transition material between the four formal movements.
 - These figures describe the verified code commit. Check the current branch head and its own Actions run after any subsequent changes.
 
 ## 7. Documentation note
