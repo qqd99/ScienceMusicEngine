@@ -182,7 +182,7 @@ export function generateComposition(mode: Mode, options: {
         const isClimax = bar === 4 || bar === 5;
         const isDownbeat = slot === 0;
         const velocity = clamp(sectionGain[bar] * (isDownbeat ? 0.92 : 0.66) * (isClimax ? 1.08 : 1), 0.08, 0.92);
-        const durationBeats = isFinal ? 3.55 : isClimax ? 0.42 : slot === 7 ? 0.34 : 0.58;
+        const durationBeats = isFinal ? 1.85 : isClimax ? 0.42 : slot === 7 ? 0.34 : 0.58;
         events.push({
           time: bar * 4 * beat + slot * 0.5 * beat,
           duration: durationBeats * beat,
@@ -198,7 +198,7 @@ export function generateComposition(mode: Mode, options: {
   // Optional harmonic foundation: four two-bar chords and bass pulses.
   if (musicalArrangement) {
   const scaleNotes = SCALES[scale] ?? SCALES.Lydian;
-  const progression = scale === "Minor" ? [0, 5, 2, 6] : [0, 4, 5, 3];
+  const progression = scale === "Minor" ? [0, 5, 2, musicalExpression ? 0 : 6] : [0, 4, 5, musicalExpression ? 0 : 3];
   for (let section = 0; section < 4; section++) {
     // The average mathematical output gently selects nearby harmonic colors;
     // the functional progression keeps the result musically grounded.
