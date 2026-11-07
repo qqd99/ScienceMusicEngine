@@ -95,6 +95,33 @@ describe("mathematical generators", () => {
     expect(Math.min(...inBar(4).map(event => event.frequency)))
       .toBeGreaterThan(Math.min(...inBar(0).map(event => event.frequency)));
   });
+  it("builds the bass and chord layers toward the climax, then releases", () => {
+    const composition = generateComposition("mandelbrot", {
+      bpm: 120, musicalArrangement: true, musicalExpression: true
+    });
+    const bass = composition.events.filter(event => event.voice === "bass");
+    const pads = composition.events.filter(event => event.voice === "pad");
+    const bassAtBar = (bar: number) => bass.find(event => Math.abs(event.time - bar * 2) < 1e-8)!;
+    expect(bassAtBar(4).velocity).toBeGreaterThan(bassAtBar(0).velocity);
+    expect(bassAtBar(7).velocity).toBeLessThan(bassAtBar(4).velocity);
+    expect(pads[6].velocity).toBeGreaterThan(pads[0].velocity);
+    expect(pads[9].velocity).toBeLessThan(pads[6].velocity);
+  });
+  it("adds a sparse drum part that becomes denser at the climax and clears for the ending", () => {
+    const composition = generateComposition("chaos", {
+      bpm: 120, musicalArrangement: true, musicalExpression: true
+    });
+    const drums = composition.events.filter(event => event.voice === "percussion");
+    const inBar = (bar: number) => drums.filter(event => event.time >= bar * 2 && event.time < (bar + 1) * 2);
+    expect(inBar(0).length).toBeLessThan(inBar(4).length);
+    expect(inBar(4).some(event => event.percussionKind === "kick")).toBe(true);
+    expect(inBar(4).some(event => event.percussionKind === "snare")).toBe(true);
+    expect(inBar(7).length).toBeLessThan(inBar(4).length);
+  });
+  it("omits the drum arrangement when musical expression is disabled", () => {
+    const composition = generateComposition("chaos", { musicalExpression: false });
+    expect(composition.events.some(event => event.voice === "percussion")).toBe(false);
+  });
   it("keeps musical expression deterministic for the same seed", () => {
     const a = generateComposition("chaos", { seed: 0.42, musicalExpression: true });
     const b = generateComposition("chaos", { seed: 0.42, musicalExpression: true });
