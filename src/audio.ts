@@ -23,6 +23,38 @@ export function resolveInstrumentEvents(composition: Composition, instruments: I
   const events = [...composition.events];
   const lead = composition.events.filter(event => (event.voice ?? "lead") === "lead");
   if (!lead.length) return events;
+  const beat = composition.duration / 32;
+  // Plucked strings answer selected lead phrases instead of doubling the melody.
+  if (instruments.plucked) {
+    const answerSources = lead.filter((_, index) => index % 2 === 1);
+    answerSources.forEach((source, index) => {
+      const time = source.time + Math.min(source.duration * 0.72, beat * 0.58);
+      if (time >= composition.duration - beat * 0.15) return;
+      const interval = index % 2 === 0 ? -2 : 3;
+      events.push({
+        time, duration: beat * 0.52,
+        frequency: source.frequency * Math.pow(2, interval / 12),
+        velocity: Math.max(0.055, source.velocity * 0.48),
+        waveform: "triangle", pan: source.pan * -0.8, voice: "answer"
+      });
+    });
+  }
+  // Warm analog contributes a restrained counterline / sustained color.
+  if (instruments.analog) {
+    for (let bar = 0; bar < 8; bar++) {
+      const time = bar * beat * 4 + beat * 1.5;
+      const source = lead.reduce((best, event) =>
+        Math.abs(event.time - time) < Math.abs(best.time - time) ? event : best, lead[0]);
+      if (time >= composition.duration - beat * 0.2) continue;
+      const interval = bar % 2 === 0 ? 7 : 12;
+      events.push({
+        time, duration: beat * (bar === 7 ? 1.5 : 2.1),
+        frequency: source.frequency * Math.pow(2, interval / 12),
+        velocity: Math.max(0.035, source.velocity * 0.2),
+        waveform: "sawtooth", pan: bar % 2 === 0 ? 0.24 : -0.24, voice: "texture"
+      });
+    }
+  }
   const hasBass = events.some(event => event.voice === "bass");
   const hasPads = events.some(event => event.voice === "pad");
   const beat = composition.duration / 32;
@@ -70,7 +102,7 @@ function scheduleInstrumentLayer(
   level = 1
 ): AudioScheduledSourceNode | null {
   const voice = event.voice ?? "lead";
-  if ((instrument === "piano" || instrument === "analog" || instrument === "plucked") && voice !== "lead") return null;
+  if (instrument === "piano" && voice !== "lead") return null;\n  if (instrument === "plucked" && voice !== "answer") return null;\n  if (instrument === "analog" && voice !== "texture") return null;
   if (instrument === "cinematicBass" && voice !== "bass") return null;
   if (instrument === "atmosphere" && voice !== "pad") return null;
   const at = Math.max(0, atTime);
