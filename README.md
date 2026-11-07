@@ -52,7 +52,7 @@ The **Sound Character** selector offers:
 - **Natural / Organic:** rounder attacks and warmer filtering.
 - **Electronic / Synth:** more detuning, filter movement and electronic harmonics.
 
-Each instrument has its own ON/OFF control and 0–150% mixer level. The independent **Output Volume** slider controls both live playback and WAV export (0–150%; default 115%). A dynamics compressor helps manage peaks.
+Each instrument has its own ON/OFF control and 0–150% mixer level. The independent **Output Volume** slider controls both live playback and WAV export (0–150%; default 115%). The shared master chain adds a fixed **+14 dB post-compressor output boost** (about 5.01× amplitude), followed by a fast peak limiter to protect the output. The same chain is used for live playback and WAV export.
 
 Use **Export WAV** to render the current composition offline as stereo 16-bit, 44.1 kHz audio. Export does not require starting live playback. All instruments and percussion are synthesized with Web Audio oscillators, filters, envelopes and deterministic noise; no samples are downloaded.
 

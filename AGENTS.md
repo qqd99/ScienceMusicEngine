@@ -51,7 +51,7 @@ The browser UI includes mathematical visualization, a moving playhead, tempo, co
   - **Atmospheric Pads:** sustain chord voicings and harmonic atmosphere.
 - Sound character profiles: **Hybrid Cinematic** (default), **Natural / Organic**, and **Electronic / Synth**. A profile changes timbre, not the underlying mathematical event sequence.
 - Each instrument has its own ON/OFF control and independent 0–150% mixer level.
-- The output-volume slider controls live playback and WAV export (0–150%; current default is 115%). A compressor helps manage peaks.
+- The output-volume slider controls live playback and WAV export (0–150%; current default is 115%). The shared master chain applies a fixed +14 dB post-compressor gain (about 5.01× amplitude), followed by a fast peak limiter. Live playback and WAV export must use the same chain.
 - WAV export uses `OfflineAudioContext` and produces stereo 16-bit, 44.1 kHz output.
 - The **Ensemble Conductor** has its own ON/OFF control and is a selective orchestrator, not merely a volume curve. Enabled instruments are available to it, not automatically active. It analyses lead density and actual rests, assigns sparse bass/pad/answer/counterline roles, and reserves percussion for the transition and climax.
 - Plucked answers and analog counterlines must fit genuine gaps in the lead. Bass marks selected harmonic anchors; pads frame selected structural moments; percussion yields low-frequency downbeats when bass owns them. Keep no more than two supporting roles intentionally layered beneath the lead at once.
@@ -122,6 +122,10 @@ The selective orchestration revision should follow these rules:
 - The Shepard illusion must remain a special continuous texture, not an ordinary ensemble arrangement.
 
 **Next action after the revision:** ask the user to audition the new conductor with all five instruments enabled and compare ON/OFF using the same mode and seed. Listen for whether the parts take turns, respect the melody's rests, and create a clear but uncluttered climax. Do not claim perceptual success based on tests alone. Ask for feedback before adding unrelated features.
+
+### Current output-level revision
+
+The user reported that the complete mix was barely audible even at maximum output volume and requested at least +14 dB. The master output now applies a fixed +14 dB gain after the existing compressor, followed by a fast final peak limiter. Keep this shared master chain identical for live playback and offline WAV export. The UI should make the boost visible. Do not claim a calibrated acoustic SPL or LUFS target; actual playback level still depends on device output and content.
 
 ### Last verified selective-orchestration revision
 

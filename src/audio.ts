@@ -4,6 +4,37 @@ export type InstrumentLevels = Record<keyof InstrumentSettings, number>;
 export const DEFAULT_INSTRUMENT_LEVELS: InstrumentLevels = { piano: 0.9, analog: 0.72, plucked: 0.82, cinematicBass: 0.9, atmosphere: 0.72 };
 export const DEFAULT_SOUND_PROFILE: SoundProfile = "hybrid-cinematic";
 
+/** Fixed post-compressor gain: +14 dB = approximately 5.01x amplitude. */
+export const MASTER_OUTPUT_BOOST_DB = 14;
+export const MASTER_OUTPUT_BOOST = Math.pow(10, MASTER_OUTPUT_BOOST_DB / 20);
+
+/**
+ * Shared live/offline master chain. The boost is applied after compression so
+ * the compressor cannot simply absorb the added gain; a fast final limiter
+ * catches peaks before they reach the speakers or the WAV sample clamp.
+ */
+function connectMasterOutput(context: BaseAudioContext, master: GainNode) {
+  const compressor = context.createDynamicsCompressor();
+  compressor.threshold.value = -14;
+  compressor.knee.value = 18;
+  compressor.ratio.value = 8;
+  compressor.attack.value = 0.004;
+  compressor.release.value = 0.22;
+
+  const outputGain = context.createGain();
+  outputGain.gain.value = MASTER_OUTPUT_BOOST;
+
+  const limiter = context.createDynamicsCompressor();
+  limiter.threshold.value = -1;
+  limiter.knee.value = 0;
+  limiter.ratio.value = 20;
+  limiter.attack.value = 0.001;
+  limiter.release.value = 0.08;
+
+  master.connect(compressor).connect(outputGain).connect(limiter).connect(context.destination);
+  return { compressor, outputGain, limiter };
+}
+
 export interface InstrumentSettings {
   piano: boolean;
   analog: boolean;
@@ -472,6 +503,8 @@ export class MusicPlayer {
   private playbackEvents: NoteEvent[] = [];
   private master: GainNode | null = null;
   private compressor: DynamicsCompressorNode | null = null;
+  private outputGain: GainNode | null = null;
+  private limiter: DynamicsCompressorNode | null = null;
   private instruments: InstrumentSettings = { ...DEFAULT_INSTRUMENTS };
   private profile: SoundProfile = DEFAULT_SOUND_PROFILE;
   private levels: InstrumentLevels = { ...DEFAULT_INSTRUMENT_LEVELS };
@@ -490,14 +523,10 @@ export class MusicPlayer {
     this.playbackEvents = preparePlaybackEvents(composition, this.instruments, this.conductorEnabled);
     this.master = ctx.createGain();
     this.master.gain.value = Math.max(0, Math.min(1.5, volume));
-    this.compressor = ctx.createDynamicsCompressor();
-    this.compressor.threshold.value = -14;
-    this.compressor.knee.value = 18;
-    this.compressor.ratio.value = 8;
-    this.compressor.attack.value = 0.004;
-    this.compressor.release.value = 0.22;
-    this.compressor.connect(ctx.destination);
-    this.master.connect(this.compressor);
+    const output = connectMasterOutput(ctx, this.master);
+    this.compressor = output.compressor;
+    this.outputGain = output.outputGain;
+    this.limiter = output.limiter;
     this.cycleStart = ctx.currentTime + 0.08;
     this.cursor = 0;
     this.playing = true;
@@ -635,8 +664,17 @@ export class MusicPlayer {
     oldMaster?.gain.setTargetAtTime(0, now, 0.025);
     this.master = null;
     const compressor = this.compressor;
+    const outputGain = this.outputGain;
+    const limiter = this.limiter;
     this.compressor = null;
-    window.setTimeout(() => { oldMaster?.disconnect(); compressor?.disconnect(); }, 100);
+    this.outputGain = null;
+    this.limiter = null;
+    window.setTimeout(() => {
+      oldMaster?.disconnect();
+      compressor?.disconnect();
+      outputGain?.disconnect();
+      limiter?.disconnect();
+    }, 100);
   }
   get isPlaying(): boolean { return this.playing; }
 }
@@ -648,13 +686,7 @@ export async function renderCompositionWav(composition: Composition, volume = 1.
   const offline = new OfflineAudioContext(2, frameCount, sampleRate);
   const master = offline.createGain();
   master.gain.value = Math.max(0, Math.min(1.5, volume));
-  const compressor = offline.createDynamicsCompressor();
-  compressor.threshold.value = -14;
-  compressor.knee.value = 18;
-  compressor.ratio.value = 8;
-  compressor.attack.value = 0.004;
-  compressor.release.value = 0.22;
-  master.connect(compressor).connect(offline.destination);
+  connectMasterOutput(offline, master);
 
   const dedicatedEnabled = Object.values(instruments).some(Boolean);
   const playbackEvents = preparePlaybackEvents(composition, instruments, conductorEnabled);

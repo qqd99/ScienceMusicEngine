@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyEnsembleConductor, DEFAULT_INSTRUMENTS, DEFAULT_INSTRUMENT_LEVELS, DEFAULT_SOUND_PROFILE, getConductorSection, hasDedicatedInstruments, preparePlaybackEvents, resolveInstrumentEvents } from "../src/audio";
+import { applyEnsembleConductor, DEFAULT_INSTRUMENTS, DEFAULT_INSTRUMENT_LEVELS, DEFAULT_SOUND_PROFILE, getConductorSection, hasDedicatedInstruments, MASTER_OUTPUT_BOOST, MASTER_OUTPUT_BOOST_DB, preparePlaybackEvents, resolveInstrumentEvents } from "../src/audio";
 import { generateComposition, type NoteEvent } from "../src/math";
 
 describe("procedural instrument controls", () => {
@@ -260,6 +260,12 @@ describe("procedural instrument controls", () => {
     expect(liveEvents.some(event => event.voice === "answer")).toBe(true);
     expect(liveEvents.some(event => event.voice === "texture")).toBe(true);
     expect(liveEvents.some(event => event.voice === "percussion" && event.time >= composition.duration * 0.5)).toBe(true);
+  });
+
+  it("applies a fixed +14 dB master output gain after compression", () => {
+    expect(MASTER_OUTPUT_BOOST_DB).toBe(14);
+    expect(MASTER_OUTPUT_BOOST).toBeCloseTo(5.011872, 5);
+    expect(20 * Math.log10(MASTER_OUTPUT_BOOST)).toBeCloseTo(14, 5);
   });
 
   it("defaults to the hybrid cinematic sound profile", () => {
