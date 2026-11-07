@@ -236,7 +236,7 @@ export function generateComposition(mode: Mode, options: {
       const bar = section * 2 + 1;
       const arc = musicalExpression ? accompanimentArc[bar] : 1;
       events.push({
-        time: (section + 2) * 8 * beat - 0.5 * beat,
+        time: (section + 1) * 8 * beat - 0.5 * beat,
         duration: 0.38 * beat,
         frequency: midiHz(chordRoots[section + 1] - 12),
         velocity: 0.11 * arc,
