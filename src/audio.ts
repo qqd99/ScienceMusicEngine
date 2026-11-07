@@ -14,6 +14,7 @@ function scheduleInstrumentLayer(
   context: BaseAudioContext,
   event: NoteEvent,
   instrument: keyof InstrumentSettings,
+  atTime: number,
   destination: AudioNode,
   onEnded?: (source: AudioScheduledSourceNode) => void
 ): AudioScheduledSourceNode | null {
@@ -21,7 +22,7 @@ function scheduleInstrumentLayer(
   if ((instrument === "piano" || instrument === "analog" || instrument === "plucked") && voice !== "lead") return null;
   if (instrument === "cinematicBass" && voice !== "bass") return null;
   if (instrument === "atmosphere" && voice !== "pad") return null;
-  const at = Math.max(0, event.time);
+  const at = Math.max(0, atTime);
   const end = at + Math.max(0.08, event.duration);
   const oscillator = context.createOscillator();
   const gain = context.createGain();
@@ -191,7 +192,7 @@ export class MusicPlayer {
   }
   private playNote(event: NoteEvent, at: number): void {
     const ctx = this.context, master = this.master;
-    if (!ctx || !master || this.active.size >= 48) return;
+    if (!ctx || !master || this.active.size >= 64) return;
     if (event.voice === "percussion") {
       let drum!: AudioScheduledSourceNode;
       drum = schedulePercussion(ctx, event, at, master, () => this.active.delete(drum));
@@ -199,9 +200,9 @@ export class MusicPlayer {
       return;
     }
     for (const instrument of Object.keys(this.instruments) as (keyof InstrumentSettings)[]) {
-      if (!this.instruments[instrument]) continue;
+      if (!this.instruments[instrument] || this.active.size >= 64) continue;
       let layer!: AudioScheduledSourceNode;
-      const scheduled = scheduleInstrumentLayer(ctx, event, instrument, master, source => this.active.delete(source));
+      const scheduled = scheduleInstrumentLayer(ctx, event, instrument, at, master, source => this.active.delete(source));
       if (scheduled) { layer = scheduled; this.active.add(layer); }
     }
     const osc = ctx.createOscillator();
@@ -325,7 +326,7 @@ export async function renderCompositionWav(composition: Composition, volume = 1.
       continue;
     }
     for (const instrument of Object.keys(instruments) as (keyof InstrumentSettings)[]) {
-      if (instruments[instrument]) scheduleInstrumentLayer(offline, event, instrument, master);
+      if (instruments[instrument]) scheduleInstrumentLayer(offline, event, instrument, at, master);
     }
     const oscillator = offline.createOscillator();
     const filter = offline.createBiquadFilter();
