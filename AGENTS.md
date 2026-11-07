@@ -107,35 +107,34 @@ After editing:
 
 ## 6. Current handoff / resume point
 
-The user auditioned the first selective conductor and said it still felt like a scheduler. They approved the next architecture: **an adaptive conductor that can reconsider its decisions during playback when the musical situation changes**, with decisions revised at phrase boundaries.
+The user approved a shift from a fixed instrument scheduler to a **score-aware adaptive conductor** that can reconsider orchestration during playback when the musical situation changes. The first implementation is now committed and verified.
 
-The required direction is a deterministic, score-aware adaptive conductor, not a fixed bar-role schedule:
+Current behavior:
 
-- Analyze each upcoming two-bar phrase: lead density, note durations, rhythmic placement, velocity, rests, harmonic anchors and change from the previous phrase.
-- Carry phrase-to-phrase context (recent density, energy and selected roles).
-- Select at most two supporting roles for a phrase. Enabled instruments are available, not automatically active.
-- Reconsider roles at each phrase boundary. Bass, pads, answers, analog counterlines and percussion must earn their place from the current musical context.
-- Live playback should prepare the next phrase just ahead of its entrance. Offline WAV export must walk the same deterministic session and produce identical events.
-- The event scheduler executes prepared events only; it must not make musical decisions.
-- Keep the Shepard illusion as its own continuous texture.
+- The eight-bar composition is analyzed as four two-bar phrases.
+- Each phrase is evaluated using lead-note density, note durations, rhythmic placement, velocity, rests and changes from the previous phrase.
+- The conductor carries previous phrase density, energy and selected roles forward as context.
+- It chooses at most two supporting roles per phrase. Enabled instruments are available, not automatically active.
+- Bass, pads, plucked answers, analog counterlines and percussion are selected according to the phrase's musical context. Percussion yields downbeats already owned by bass.
+- `AdaptiveConductorSession` prepares one phrase at a time. Live playback asks for the next phrase shortly before its entrance; the scheduler only executes the prepared events.
+- Offline WAV export walks the same deterministic session, preserving live/offline event parity.
+- The conductor readout shows the current phrase's selected roles.
+- The Shepard illusion remains a special continuous texture and bypasses ordinary ensemble conducting.
+- Adaptation is score-aware; microphone input and real-time audio recognition are not part of this version.
 
-The user has agreed to score-aware adaptation from the generated composition; this does not require microphone input or real-time audio recognition. After implementation, ask the user to audition all instruments enabled and report whether the arrangement responds naturally to sparse/dense phrases. Do not claim perceptual success from tests alone.
-
-### Current adaptive-conductor revision
-
-The user approved phrase-boundary adaptation. The conductor should analyze the score ahead of each two-bar phrase, carry context from the previous phrase, and revise the selected supporting roles as density, rests, energy and rhythmic placement change. Live playback should request upcoming phrases just before their entrance; WAV export must use the same deterministic session. The scheduler remains an execution-only component. No microphone input is required for this score-aware first version.
+**Next action:** ask the user to audition the live app with all five instruments enabled, using the same mode and seed for comparison. Listen for whether the conductor changes its support as the melody becomes sparse or dense, whether instruments take turns naturally, and whether the climax and ending feel convincing. Passing tests does not prove musical quality; use the user's listening feedback before further tuning or adding features.
 
 ### Current output-level revision
 
 The user reported that the complete mix was barely audible even at maximum output volume and requested at least +14 dB. The master output now applies a fixed +14 dB gain after the existing compressor, followed by a fast final peak limiter. Keep this shared master chain identical for live playback and offline WAV export. The UI should make the boost visible. Do not claim a calibrated acoustic SPL or LUFS target; actual playback level still depends on device output and content.
 
-### Last verified selective-orchestration revision
+### Last verified adaptive-conductor implementation
 
-- Main orchestration commit: `6742bf8a5a3035e070ed034f4796c095f61ed0d5` — “Replace conductor volume ramps with selective rhythm-aware orchestration”.
-- Follow-up hardening commit: `fe8536a776f8342248a4dff79097e393bac7af0f` — order-independent bass/percussion coordination and explicit Shepard-layer isolation.
-- GitHub Actions run **#103** completed successfully for the hardening commit, including `npm install`, `npm test`, `npm run build`, Pages artifact upload and deployment.
-- The verified suite contains **38 test cases** (18 audio tests and 20 math tests).
-- This handoff update is documentation-only and follows that verified code revision. Always inspect the current branch head and exact Actions run before relying on these figures.
+- Verified code commit: `3432696c41961559d64a086ea17ddfa1f10db8ab` — “Preserve percussion through sustained high-energy phrases”.
+- GitHub Actions run **#109** completed successfully, including `npm install`, `npm test`, `npm run build`, Pages artifact upload and deployment.
+- The verified suite contains **41 test cases** (21 audio tests and 20 mathematics tests).
+- The implementation uses `AdaptiveConductorSession` for phrase-by-phrase decisions in both live playback and offline rendering.
+- These figures describe the verified code commit. Check the current branch head and its own Actions run after any subsequent changes.
 
 ## 7. Documentation note
 
