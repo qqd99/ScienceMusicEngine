@@ -1,8 +1,59 @@
 import type { Composition, NoteEvent } from "./math";
+function schedulePercussion(
+  context: BaseAudioContext,
+  event: NoteEvent,
+  at: number,
+  destination: AudioNode
+): AudioScheduledSourceNode {
+  const kind = event.percussionKind ?? "kick";
+  const gain = context.createGain();
+  const filter = context.createBiquadFilter();
+  const pan = context.createStereoPanner();
+  const duration = Math.max(0.035, event.duration);
+  const peak = Math.max(0.0001, event.velocity);
+  let source: AudioScheduledSourceNode;
+  if (kind === "kick") {
+    const oscillator = context.createOscillator();
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(132, at);
+    oscillator.frequency.exponentialRampToValueAtTime(46, at + duration * 0.72);
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(180, at);
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(peak, at + 0.006);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + duration);
+    source = oscillator;
+  } else {
+    const frames = Math.max(128, Math.ceil(context.sampleRate * duration));
+    const buffer = context.createBuffer(1, frames, context.sampleRate);
+    const data = buffer.getChannelData(0);
+    let state = (Math.floor(event.time * 1_000_000) ^ (kind === "snare" ? 0x5a17 : 0x71c3)) >>> 0;
+    for (let i = 0; i < frames; i++) {
+      state ^= state << 13; state ^= state >>> 17; state ^= state << 5;
+      data[i] = ((state >>> 0) / 2147483648) - 1;
+    }
+    const noise = context.createBufferSource();
+    noise.buffer = buffer;
+    filter.type = kind === "snare" ? "bandpass" : "highpass";
+    filter.frequency.setValueAtTime(kind === "snare" ? 1850 : 7200, at);
+    filter.Q.setValueAtTime(kind === "snare" ? 0.8 : 0.45, at);
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(peak, at + (kind === "snare" ? 0.004 : 0.001));
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + duration);
+    source = noise;
+  }
+  pan.pan.setValueAtTime(event.pan, at);
+  source.connect(filter).connect(gain).connect(pan).connect(destination);
+  source.onended = () => { source.disconnect(); filter.disconnect(); gain.disconnect(); pan.disconnect(); };
+  source.start(at);
+  source.stop(at + duration + 0.005);
+  return source;
+}
+
 export class MusicPlayer {
   private context: AudioContext | null = null;
   private timer: number | null = null;
-  private active = new Set<OscillatorNode>();
+  private active = new Set<AudioScheduledSourceNode>();
   private playing = false;
   private cycleStart = 0;
   private cursor = 0;
@@ -46,7 +97,13 @@ export class MusicPlayer {
   }
   private playNote(event: NoteEvent, at: number): void {
     const ctx = this.context, master = this.master;
-    if (!ctx || !master || this.active.size >= 32) return;
+    if (!ctx || !master || this.active.size >= 48) return;
+    if (event.voice === "percussion") {
+      const drum = schedulePercussion(ctx, event, at, master);
+      this.active.add(drum);
+      drum.onended = () => { this.active.delete(drum); drum.disconnect(); };
+      return;
+    }
     const osc = ctx.createOscillator();
     const rich = this.composition?.richInstruments ?? true;
     const shimmer = rich && (event.voice ?? "lead") === "lead" ? ctx.createOscillator() : null;
@@ -148,6 +205,10 @@ export async function renderCompositionWav(composition: Composition): Promise<Bl
     const end = Math.min(composition.duration + tailSeconds, at + Math.max(0.04, event.duration));
     const duration = end - at;
     if (duration <= 0) continue;
+    if (event.voice === "percussion") {
+      schedulePercussion(offline, event, at, master);
+      continue;
+    }
     const oscillator = offline.createOscillator();
     const filter = offline.createBiquadFilter();
     const gain = offline.createGain();
