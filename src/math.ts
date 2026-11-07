@@ -68,7 +68,13 @@ export function generateComposition(mode: Mode, options: {
   const values: number[] = [];
   const add = (step: number, value: number, velocity = 0.35, length = 0.42, wave: OscillatorType = "sine") => {
     const note = scaleNote(value, root, scale);
-    events.push({ time: step * beat / 2, duration: length * beat, frequency: midiHz(note), velocity, waveform: wave, pan: Math.sin(step * 0.37) * 0.55, voice: "lead" });
+    const beatInBar = step % 8;
+    const bar = Math.floor(step / 8);
+    const phraseAccent = beatInBar === 0 ? 1.22 : beatInBar === 4 ? 1.08 : 1;
+    const cadenceAccent = bar === 7 && beatInBar >= 4 ? 1.14 : 1;
+    const phraseVelocity = clamp(velocity * phraseAccent * cadenceAccent, 0.08, 0.92);
+    const phraseLength = length * (beatInBar === 0 ? 1.12 : beatInBar === 7 ? 0.78 : 1);
+    events.push({ time: step * beat / 2, duration: phraseLength * beat, frequency: midiHz(note), velocity: phraseVelocity, waveform: wave, pan: Math.sin(step * 0.37) * 0.55, voice: "lead" });
   };
   if (mode === "euclidean") {
     const pulses = Math.round(steps * (0.08 + complexity * 0.42));
@@ -123,7 +129,12 @@ export function generateComposition(mode: Mode, options: {
   const scaleNotes = SCALES[scale] ?? SCALES.Lydian;
   const progression = scale === "Minor" ? [0, 5, 2, 6] : [0, 4, 5, 3];
   for (let section = 0; section < 4; section++) {
-    const degree = progression[section];
+    // The average mathematical output gently selects nearby harmonic colors;
+    // the functional progression keeps the result musically grounded.
+    const sectionValues = values.slice(section * 16, (section + 1) * 16);
+    const mean = sectionValues.length ? sectionValues.reduce((sum, value) => sum + value, 0) / sectionValues.length : 0.5;
+    const dataNudge = Math.round((mean - 0.5) * 2);
+    const degree = (progression[section] + (section === 0 || section === 3 ? 0 : dataNudge + scaleNotes.length)) % scaleNotes.length;
     const chordRoot = root + scaleNotes[degree % scaleNotes.length];
     const thirdIndex = degree + 2;
     const fifthIndex = degree + 4;
