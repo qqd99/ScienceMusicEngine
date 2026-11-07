@@ -58,14 +58,14 @@ export class MusicPlayer {
     const attack = voice === "pad" ? Math.min(0.55, event.duration * 0.3) : voice === "bass" ? 0.018 : 0.025;
     const release = voice === "pad" ? Math.min(0.7, event.duration * 0.35) : 0.08;
     const holdEnd = Math.max(at + attack + 0.02, at + event.duration - release);
-    osc.type = voice === "bass" ? "triangle" : voice === "pad" ? "sine" : event.waveform;
+    osc.type = voice === "bass" ? "triangle" : voice === "pad" ? "sine" : rich ? event.waveform : "sine";
     osc.frequency.setValueAtTime(event.frequency, at);
     if (shimmer) {
       shimmer.type = "triangle";
       shimmer.frequency.setValueAtTime(event.frequency * 2.003, at);
       shimmer.detune.setValueAtTime(-4, at);
       const overtoneGain = ctx.createGain();
-      overtoneGain.gain.value = 0.48;
+      overtoneGain.gain.value = 0.68;
       shimmer.connect(overtoneGain).connect(filter);
       shimmer.start(at);
       shimmer.stop(at + event.duration + 0.03);
@@ -152,7 +152,7 @@ export async function renderCompositionWav(composition: Composition): Promise<Bl
     const filter = offline.createBiquadFilter();
     const gain = offline.createGain();
     const pan = offline.createStereoPanner();
-    oscillator.type = voice === "bass" ? "triangle" : voice === "pad" ? "sine" : event.waveform;
+    oscillator.type = voice === "bass" ? "triangle" : voice === "pad" ? "sine" : composition.richInstruments ? event.waveform : "sine";
     oscillator.frequency.setValueAtTime(event.frequency, at);
     filter.type = "lowpass";
     filter.frequency.setValueAtTime(voice === "pad" ? 2600 : voice === "bass" ? 680 : composition.richInstruments ? 9000 : 2400, at);
@@ -172,7 +172,7 @@ export async function renderCompositionWav(composition: Composition): Promise<Bl
       overtone.type = "triangle";
       overtone.frequency.setValueAtTime(event.frequency * 2.003, at);
       overtone.detune.setValueAtTime(-4, at);
-      overtoneGain.gain.value = 0.48;
+      overtoneGain.gain.value = 0.68;
       overtone.connect(overtoneGain).connect(filter);
       overtone.start(at);
       overtone.stop(end + 0.03);
