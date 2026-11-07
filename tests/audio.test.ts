@@ -57,6 +57,32 @@ describe("procedural instrument controls", () => {
     expect(resolved.filter(event => event.voice === "pad")).toEqual(actualPads);
   });
 
+  it("creates separate deterministic call-and-response and analog texture parts", () => {
+    const composition = generateComposition("mandelbrot", {
+      seed: 0.314159, musicalArrangement: true, musicalExpression: true
+    });
+    const settings = {
+      piano: true, analog: true, plucked: true, cinematicBass: true, atmosphere: true
+    };
+    const first = resolveInstrumentEvents(composition, settings);
+    const second = resolveInstrumentEvents(composition, settings);
+    expect(first).toEqual(second);
+    expect(first.some(event => event.voice === "lead")).toBe(true);
+    expect(first.some(event => event.voice === "answer")).toBe(true);
+    expect(first.filter(event => event.voice === "texture")).toHaveLength(8);
+    expect(first.some(event => event.voice === "bass")).toBe(true);
+    expect(first.some(event => event.voice === "pad")).toBe(true);
+  });
+
+  it("does not create string answers or analog counterlines when those instruments are off", () => {
+    const composition = generateComposition("chaos", { seed: 0.271828 });
+    const events = resolveInstrumentEvents(composition, {
+      piano: true, analog: false, plucked: false, cinematicBass: false, atmosphere: false
+    });
+    expect(events.some(event => event.voice === "answer")).toBe(false);
+    expect(events.some(event => event.voice === "texture")).toBe(false);
+  });
+
   it("defaults to the hybrid cinematic sound profile", () => {
     expect(DEFAULT_SOUND_PROFILE).toBe("hybrid-cinematic");
   });
