@@ -60,6 +60,19 @@ describe("mathematical generators", () => {
     expect(expressive.values).toEqual(plain.values);
     expect(expressive.events.some(event => event.time > 0 && event.voice === "lead")).toBe(true);
   });
+  it("creates a clear eight-bar arc with a sparse opening, dense climax and tonic ending", () => {
+    const composition = generateComposition("chaos", { bpm: 120, root: 60, scale: "Major", musicalExpression: true });
+    const beat = 0.5;
+    const lead = composition.events.filter(event => event.voice === "lead");
+    const counts = Array.from({ length: 8 }, (_, bar) =>
+      lead.filter(event => event.time >= bar * 4 * beat && event.time < (bar + 1) * 4 * beat).length
+    );
+    expect(counts[0]).toBeLessThan(counts[4]);
+    expect(counts[4]).toBeGreaterThanOrEqual(8);
+    const finalNote = lead.reduce((latest, event) => event.time > latest.time ? event : latest);
+    expect(finalNote.frequency).toBeCloseTo(440 * Math.pow(2, (72 - 69) / 12), 5);
+    expect(finalNote.time + finalNote.duration).toBeLessThanOrEqual(composition.duration);
+  });
   it("keeps musical expression deterministic for the same seed", () => {
     const a = generateComposition("chaos", { seed: 0.42, musicalExpression: true });
     const b = generateComposition("chaos", { seed: 0.42, musicalExpression: true });
