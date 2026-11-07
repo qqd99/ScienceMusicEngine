@@ -48,6 +48,7 @@ export class MusicPlayer {
     const ctx = this.context, master = this.master;
     if (!ctx || !master || this.active.size >= 32) return;
     const osc = ctx.createOscillator();
+    const shimmer = voiceFor(event) === "lead" ? ctx.createOscillator() : null;
     const gain = ctx.createGain();
     const filter = ctx.createBiquadFilter();
     const pan = ctx.createStereoPanner();
@@ -56,8 +57,20 @@ export class MusicPlayer {
     const attack = voice === "pad" ? Math.min(0.55, event.duration * 0.3) : voice === "bass" ? 0.018 : 0.025;
     const release = voice === "pad" ? Math.min(0.7, event.duration * 0.35) : 0.08;
     const holdEnd = Math.max(at + attack + 0.02, at + event.duration - release);
-    osc.type = event.waveform;
+    osc.type = voice === "bass" ? "triangle" : voice === "pad" ? "sine" : event.waveform;
     osc.frequency.setValueAtTime(event.frequency, at);
+    if (shimmer) {
+      shimmer.type = "triangle";
+      shimmer.frequency.setValueAtTime(event.frequency * 2.003, at);
+      shimmer.detune.setValueAtTime(-4, at);
+      const overtoneGain = ctx.createGain();
+      overtoneGain.gain.value = 0.19;
+      shimmer.connect(overtoneGain).connect(filter);
+      shimmer.start(at);
+      shimmer.stop(at + event.duration + 0.03);
+      this.active.add(shimmer);
+      shimmer.onended = () => { this.active.delete(shimmer); shimmer.disconnect(); overtoneGain.disconnect(); };
+    }
     filter.type = "lowpass";
     filter.frequency.setValueAtTime(voice === "pad" ? 1900 : voice === "bass" ? 520 : 6200, at);
     filter.Q.setValueAtTime(voice === "lead" ? 0.65 : 0.35, at);
