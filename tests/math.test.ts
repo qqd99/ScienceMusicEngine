@@ -73,6 +73,28 @@ describe("mathematical generators", () => {
     expect(finalNote.frequency).toBeCloseTo(440 * Math.pow(2, (72 - 69) / 12), 5);
     expect(finalNote.time + finalNote.duration).toBeLessThanOrEqual(composition.duration);
   });
+  it("recalls the opening motif after development and climax", () => {
+    const composition = generateComposition("mandelbrot", {
+      bpm: 120, root: 60, scale: "Major", musicalExpression: true
+    });
+    const lead = composition.events.filter(event => event.voice === "lead");
+    const at = (seconds: number) => lead.find(event => Math.abs(event.time - seconds) < 1e-8)!;
+    const opening = [at(0), at(0.5), at(1), at(1.5)];
+    const reprise = [at(6), at(6.5), at(7), at(7.5)];
+    expect(reprise.slice(0, 3).map(note => note.frequency))
+      .toEqual(opening.slice(0, 3).map(note => note.frequency));
+    expect(reprise[3].frequency).toBe(440 * Math.pow(2, (72 - 69) / 12));
+  });
+  it("makes the climax denser and higher than the opening", () => {
+    const composition = generateComposition("chaos", { bpm: 120, musicalExpression: true });
+    const lead = composition.events.filter(event => event.voice === "lead");
+    const inBar = (bar: number) => lead.filter(event => event.time >= bar * 2 && event.time < (bar + 1) * 2);
+    expect(inBar(4)).toHaveLength(8);
+    expect(inBar(5)).toHaveLength(8);
+    expect(inBar(4).length).toBeGreaterThan(inBar(0).length);
+    expect(Math.min(...inBar(4).map(event => event.frequency)))
+      .toBeGreaterThan(Math.min(...inBar(0).map(event => event.frequency)));
+  });
   it("keeps musical expression deterministic for the same seed", () => {
     const a = generateComposition("chaos", { seed: 0.42, musicalExpression: true });
     const b = generateComposition("chaos", { seed: 0.42, musicalExpression: true });
