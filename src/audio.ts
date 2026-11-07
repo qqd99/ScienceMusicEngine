@@ -87,7 +87,13 @@ function scheduleInstrumentLayer(
   pan.pan.setValueAtTime(event.pan, at);
 
   if (instrument === "piano") {
-    oscillator.type = natural ? "triangle" : "sine";
+    if (profile === "hybrid-cinematic") {
+      const real = new Float32Array([0, 1, 0.42, 0.2, 0.11, 0.055, 0.025]);
+      const imag = new Float32Array(real.length);
+      oscillator.setPeriodicWave(context.createPeriodicWave(real, imag, { disableNormalization: false }));
+    } else {
+      oscillator.type = natural ? "triangle" : "sine";
+    }
     filter.frequency.setValueAtTime(natural ? 6800 : electronic ? 4200 : 5200, at);
     gain.gain.setValueAtTime(0.0001, at);
     gain.gain.exponentialRampToValueAtTime(peak * (natural ? 0.48 : 0.38), at + 0.004);
@@ -97,13 +103,19 @@ function scheduleInstrumentLayer(
     oscillator.type = natural ? "triangle" : "sawtooth";
     oscillator.detune.setValueAtTime(electronic ? -13 : -5, at);
     filter.frequency.setValueAtTime(natural ? 1500 : electronic ? 3200 : 2100, at);
+    filter.frequency.exponentialRampToValueAtTime(natural ? 850 : electronic ? 1250 : 980, Math.max(at + 0.08, end - 0.04));
     filter.Q.setValueAtTime(electronic ? 4.2 : natural ? 0.8 : 2.2, at);
     gain.gain.setValueAtTime(0.0001, at);
     gain.gain.exponentialRampToValueAtTime(peak * (electronic ? 0.22 : natural ? 0.12 : 0.17), at + 0.045);
     gain.gain.setValueAtTime(peak * 0.17, Math.max(at + 0.06, end - 0.09));
     gain.gain.exponentialRampToValueAtTime(0.0001, end);
   } else if (instrument === "plucked") {
-    oscillator.type = natural ? "sine" : "triangle";
+    if (profile === "hybrid-cinematic") {
+      const real = new Float32Array([0, 1, 0.25, 0.12, 0.06, 0.025]);
+      oscillator.setPeriodicWave(context.createPeriodicWave(real, new Float32Array(real.length)));
+    } else {
+      oscillator.type = natural ? "sine" : "triangle";
+    }
     filter.frequency.setValueAtTime(natural ? 2600 : electronic ? 5200 : 3600, at);
     gain.gain.setValueAtTime(0.0001, at);
     gain.gain.exponentialRampToValueAtTime(peak * (natural ? 0.3 : 0.42), at + 0.004);
@@ -121,6 +133,7 @@ function scheduleInstrumentLayer(
     oscillator.type = electronic ? "sawtooth" : "sine";
     oscillator.detune.setValueAtTime(electronic ? -15 : natural ? -3 : -8, at);
     filter.frequency.setValueAtTime(electronic ? 2600 : natural ? 1200 : 1800, at);
+    filter.frequency.linearRampToValueAtTime(electronic ? 3400 : natural ? 900 : 1450, end);
     gain.gain.setValueAtTime(0.0001, at);
     gain.gain.exponentialRampToValueAtTime(peak * (electronic ? 0.28 : natural ? 0.16 : 0.22), at + Math.min(0.8, event.duration * 0.45));
     gain.gain.setValueAtTime(peak * 0.22, Math.max(at + 0.05, end - 0.45));
