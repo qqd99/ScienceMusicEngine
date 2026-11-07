@@ -57,7 +57,11 @@ function longestGapPerBar(gaps: LeadGap[]): Map<number, LeadGap> {
 export function resolveInstrumentEvents(composition: Composition, instruments: InstrumentSettings): NoteEvent[] {
   // Shepard layers are already a complete, carefully balanced sound event.
   // Do not turn them into an ordinary ensemble or add sequence-derived bass/pads.
-  if (composition.label === "shepard") return composition.events.map(event => ({ ...event }));
+  if (composition.label === "shepard") {
+    return composition.events
+      .filter(event => event.voice === undefined)
+      .map(event => ({ ...event }));
+  }
 
   const events = [...composition.events];
   const lead = composition.events.filter(event => (event.voice ?? "lead") === "lead");
@@ -224,7 +228,15 @@ export function applyEnsembleConductor(
       eventFitsLeadGap(event, lead, duration, beat)
     )
   );
-  const bassDownbeatBars = new Set<number>();
+  // Decide bass ownership before walking the event list so kick filtering does
+  // not depend on the order of simultaneous events in the input array.
+  const bassDownbeatBars = new Set<number>(events
+    .filter(event => event.voice === "bass" && instrumentAvailable("bass", instruments))
+    .filter(event => {
+      const bar = eventBar(event, barDuration);
+      return [0, 2, 4].includes(bar) && Math.abs(event.time - bar * barDuration) <= beat * 0.12;
+    })
+    .map(event => eventBar(event, barDuration)));
   const bassEventsByBar = new Set<number>();
   const answerBars = new Set<number>();
   const percussionCounts = new Map<number, number>();
@@ -255,7 +267,7 @@ export function applyEnsembleConductor(
       const key = cadenceApproach ? 8 : bar;
       if (bassEventsByBar.has(key)) continue;
       bassEventsByBar.add(key);
-      if (rootAnchor) bassDownbeatBars.add(bar);
+
     } else if (voice === "pad") {
       if (!instrumentAvailable(voice, instruments) || ![0, 6].includes(bar)) continue;
     } else if (voice === "percussion") {

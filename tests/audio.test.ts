@@ -185,6 +185,21 @@ describe("procedural instrument controls", () => {
     expect(find("pad", 0)!.velocityEnd).toBeLessThan(find("pad", 0)!.velocity);
   });
 
+  it("lets bass own a downbeat even when percussion appears first in the event list", () => {
+    const events: NoteEvent[] = [
+      { time: 16, duration: 0.06, frequency: 90, velocity: 0.4, waveform: "sine", pan: 0, voice: "percussion", percussionKind: "kick" },
+      { time: 16, duration: 0.8, frequency: 55, velocity: 0.5, waveform: "triangle", pan: 0, voice: "bass" },
+      { time: 16, duration: 0.4, frequency: 440, velocity: 0.5, waveform: "sine", pan: 0, voice: "lead" },
+      { time: 18, duration: 0.06, frequency: 180, velocity: 0.3, waveform: "triangle", pan: 0, voice: "percussion", percussionKind: "snare" }
+    ];
+    const conducted = applyEnsembleConductor(events, 32, true, {
+      piano: true, analog: false, plucked: false, cinematicBass: true, atmosphere: false
+    });
+    expect(conducted.some(event => event.voice === "bass" && event.time === 16)).toBe(true);
+    expect(conducted.some(event => event.voice === "percussion" && event.percussionKind === "kick")).toBe(false);
+    expect(conducted.some(event => event.voice === "percussion" && event.percussionKind === "snare")).toBe(true);
+  });
+
   it("leaves answer and counterline silent when the lead has no usable rests", () => {
     const events: NoteEvent[] = [];
     for (let time = 8; time < 16; time += 0.5) {
@@ -225,8 +240,11 @@ describe("procedural instrument controls", () => {
     const allInstruments = {
       piano: true, analog: true, plucked: true, cinematicBass: true, atmosphere: true
     };
-    expect(resolveInstrumentEvents(composition, allInstruments)).toEqual(composition.events);
-    expect(preparePlaybackEvents(composition, allInstruments, true)).toEqual(composition.events);
+    const originalLayers = composition.events.filter(event => event.voice === undefined);
+    expect(composition.events.some(event => event.voice === "bass" || event.voice === "pad")).toBe(true);
+    expect(resolveInstrumentEvents(composition, allInstruments)).toEqual(originalLayers);
+    expect(preparePlaybackEvents(composition, allInstruments, true)).toEqual(originalLayers);
+    expect(originalLayers.every(event => event.voice === undefined)).toBe(true);
   });
 
   it("uses one deterministic conducted event list for playback and WAV preparation", () => {
