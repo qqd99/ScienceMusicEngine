@@ -10,7 +10,11 @@ export const DEFAULT_INSTRUMENTS: InstrumentSettings = {
   piano: true, analog: false, plucked: false, cinematicBass: true, atmosphere: true
 };
 
-function eventsForInstruments(composition: Composition, instruments: InstrumentSettings): NoteEvent[] {
+export function hasDedicatedInstruments(instruments: InstrumentSettings): boolean {
+  return hasDedicatedInstruments(instruments);
+}
+
+export function resolveInstrumentEvents(composition: Composition, instruments: InstrumentSettings): NoteEvent[] {
   const events = [...composition.events];
   const lead = composition.events.filter(event => (event.voice ?? "lead") === "lead");
   if (!lead.length) return events;
@@ -195,7 +199,7 @@ export class MusicPlayer {
     const ctx = this.context;
     this.composition = composition;
     this.instruments = { ...instruments };
-    this.playbackEvents = eventsForInstruments(composition, this.instruments);
+    this.playbackEvents = resolveInstrumentEvents(composition, this.instruments);
     this.master = ctx.createGain();
     this.master.gain.value = Math.max(0, Math.min(1.5, volume));
     this.compressor = ctx.createDynamicsCompressor();
@@ -241,7 +245,7 @@ export class MusicPlayer {
       this.active.add(drum);
       return;
     }
-    const dedicatedEnabled = Object.values(this.instruments).some(Boolean);
+    const dedicatedEnabled = hasDedicatedInstruments(this.instruments);
     for (const instrument of Object.keys(this.instruments) as (keyof InstrumentSettings)[]) {
       if (!this.instruments[instrument] || this.active.size >= 64) continue;
       let layer!: AudioScheduledSourceNode;
@@ -361,7 +365,7 @@ export async function renderCompositionWav(composition: Composition, volume = 1.
   master.connect(compressor).connect(offline.destination);
 
   const dedicatedEnabled = Object.values(instruments).some(Boolean);
-  const playbackEvents = eventsForInstruments(composition, instruments);
+  const playbackEvents = resolveInstrumentEvents(composition, instruments);
   for (const event of playbackEvents) {
     const voice = event.voice ?? "lead";
     const at = Math.max(0, event.time);
