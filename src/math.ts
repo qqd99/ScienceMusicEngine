@@ -70,8 +70,9 @@ export function generateComposition(mode: Mode, options: {
     events.push({ time: step * beat / 2, duration: length * beat, frequency: midiHz(note), velocity, waveform: wave, pan: Math.sin(step * 0.37) * 0.55 });
   };
   if (mode === "euclidean") {
-    const pulses = Math.round(steps * (0.12 + complexity * 0.28));
-    const pattern = euclideanPattern(pulses, steps, 3);
+    const pulses = Math.round(steps * (0.08 + complexity * 0.42));
+    const rotation = Math.floor(seed * 10_007) % steps;
+    const pattern = euclideanPattern(pulses, steps, rotation);
     pattern.forEach((hit, i) => {
       values.push(hit ? 1 : 0);
       if (hit) {
@@ -82,21 +83,34 @@ export function generateComposition(mode: Mode, options: {
     const sequence = logisticSequence(seed, 3.72 + complexity * 0.27, steps);
     sequence.forEach((v, i) => { values.push(v); add(i, v, 0.2 + v * 0.38, 0.55, "triangle"); });
   } else if (mode === "mandelbrot") {
+    // Complexity controls iteration depth and the vertical sweep through the set.
+    // Seed controls the deterministic path through the complex plane.
+    const maxIterations = Math.round(24 + complexity * 176);
+    const seedPhase = ((Math.floor(seed * 1_000_003) % 10_007) / 10_007) * Math.PI * 2;
+    const xShift = Math.sin(seedPhase) * 0.22;
+    const yCenter = Math.cos(seedPhase * 1.37) * 0.24;
+    const sweep = 0.035 + complexity * 0.23;
     for (let i = 0; i < steps; i++) {
-      const x = -2.15 + (i / (steps - 1)) * 2.9;
-      const y = 0.18 + Math.sin(i * 0.19) * 0.12;
-      const escape = mandelbrotEscape(x, y, 80);
-      const value = escape / 80;
+      const t = i / (steps - 1);
+      // Traverse a horizontal slice near the interesting cardioid/bulb boundary,
+      // with a seeded, gentle vertical modulation so seeds alter the sampled path.
+      const x = -1.95 + t * 2.65 + xShift;
+      const y = yCenter + Math.sin(t * Math.PI * (1.5 + complexity * 2.5) + seedPhase) * sweep;
+      const escape = mandelbrotEscape(x, y, maxIterations);
+      const value = escape / maxIterations;
       values.push(value);
-      if (escape < 80 || i % 4 === 0) add(i, value, 0.18 + value * 0.42, 0.7, "sine");
+      if (escape < maxIterations || i % Math.max(1, Math.round(7 - complexity * 5)) === 0) {
+        add(i, value, 0.18 + value * 0.42, 0.7, "sine");
+      }
     }
   } else {
     // A Shepard illusion: overlapping octave layers rise while their envelopes crossfade.
     for (let i = 0; i < steps; i++) {
       const phase = i / steps;
       values.push(phase);
+      const seedOffset = (seed % 1 + 1) % 1;
       for (let layer = 0; layer < 3; layer++) {
-        const octavePosition = (phase * 2 + layer / 3) % 1;
+        const octavePosition = (phase * 2 + layer / 3 + seedOffset) % 1;
         const midi = root + 12 + octavePosition * 12;
         const center = 0.5;
         const envelope = Math.pow(Math.max(0, Math.cos((octavePosition - center) * Math.PI)), 1.7);
