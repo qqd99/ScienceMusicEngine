@@ -1,4 +1,5 @@
 export type Mode = "mandelbrot" | "euclidean" | "chaos" | "shepard";
+export const COMPOSITION_BARS = 16;
 export interface NoteEvent {
   time: number;
   duration: number;
@@ -61,7 +62,7 @@ export function generateComposition(mode: Mode, options: {
   bpm?: number; root?: number; scale?: string; complexity?: number; seed?: number;
   richInstruments?: boolean; musicalArrangement?: boolean; musicalExpression?: boolean;
 } = {}): Composition {
-  const bpm = clamp(options.bpm ?? 108, 45, 180);
+  const bpm = clamp(options.bpm ?? 128, 45, 180);
   const root = options.root ?? 60;
   const scale = options.scale ?? "Lydian";
   const complexity = clamp(options.complexity ?? 0.55, 0.1, 1);
@@ -70,7 +71,7 @@ export function generateComposition(mode: Mode, options: {
   const musicalArrangement = options.musicalArrangement ?? true;
   const musicalExpression = options.musicalExpression ?? true;
   const beat = 60 / bpm;
-  const bars = 8;
+  const bars = COMPOSITION_BARS;
   const steps = bars * 8;
   const duration = bars * 4 * beat;
   const events: NoteEvent[] = [];
@@ -134,11 +135,15 @@ export function generateComposition(mode: Mode, options: {
       }
     }
   }
-  // A recognizable four-note motif is stated, transformed, intensified, then
-  // recalled. The mathematical sequence chooses its intervals; the form chooses
-  // when and how those intervals return.
+  // A recognizable four-note motif now unfolds over four connected
+  // four-bar movements: statement, development, climax, and reprise/cadence.
+  // The final bar of each movement contains a pickup into the next movement.
+  const scaleNotes = SCALES[scale] ?? SCALES.Lydian;
+  const chordProgression = scale === "Minor"
+    ? [0, 5, 3, 6, 0, 5, 4, 0]
+    : [0, 3, 5, 4, 0, 3, 4, 0];
+
   if (musicalExpression && mode !== "shepard") {
-    const scaleNotes = SCALES[scale] ?? SCALES.Lydian;
     const source = values.length ? values : Array.from({ length: steps }, (_, i) => i / steps);
     const degreeAt = (step: number) => {
       const raw = source[step % source.length] ?? 0.5;
@@ -146,14 +151,20 @@ export function generateComposition(mode: Mode, options: {
       return Math.floor(shaped * scaleNotes.length);
     };
     const motif = [0, 2, 4, 6].map(degreeAt);
-    const sectionGain = [0.44, 0.52, 0.64, 0.72, 0.96, 0.9, 0.58, 0.38];
+    const sectionGain = [
+      0.38, 0.42, 0.46, 0.5,
+      0.56, 0.62, 0.68, 0.74,
+      0.84, 0.94, 1.0, 0.96,
+      0.78, 0.68, 0.52, 0.3
+    ];
     for (let i = events.length - 1; i >= 0; i--) {
       if ((events[i].voice ?? "lead") === "lead") events.splice(i, 1);
     }
     const addLead = (bar: number, slot: number, degree: number, opts: {
       octave?: number; velocity?: number; durationBeats?: number; wave?: OscillatorType;
     } = {}) => {
-      const midi = root + (opts.octave ?? 1) * 12 + scaleNotes[((degree % scaleNotes.length) + scaleNotes.length) % scaleNotes.length];
+      const scaleDegree = ((degree % scaleNotes.length) + scaleNotes.length) % scaleNotes.length;
+      const midi = root + (opts.octave ?? 1) * 12 + scaleNotes[scaleDegree];
       events.push({
         time: bar * 4 * beat + slot * 0.5 * beat,
         duration: (opts.durationBeats ?? 0.62) * beat,
@@ -165,16 +176,26 @@ export function generateComposition(mode: Mode, options: {
       });
     };
 
-    // A: statement. The same four-note contour spans bars 1 and 2.
-    addLead(0, 0, motif[0], { velocity: sectionGain[0] * 0.9, durationBeats: 1.05 });
-    addLead(0, 4, motif[1], { velocity: sectionGain[0] * 0.78, durationBeats: 0.8 });
-    addLead(1, 0, motif[2], { velocity: sectionGain[1] * 0.86, durationBeats: 1.0 });
-    addLead(1, 4, motif[3], { velocity: sectionGain[1] * 0.82, durationBeats: 0.9 });
+    // I. Opening: let the motif breathe before stating it more clearly.
+    addLead(0, 0, motif[0], { velocity: sectionGain[0] * 0.9, durationBeats: 1.2 });
+    addLead(0, 4, motif[1], { velocity: sectionGain[0] * 0.78, durationBeats: 0.95 });
+    addLead(1, 0, motif[2], { velocity: sectionGain[1] * 0.86, durationBeats: 1.1 });
+    addLead(1, 4, motif[3], { velocity: sectionGain[1] * 0.82, durationBeats: 0.95 });
+    [motif[0], motif[1], motif[2], motif[3]].forEach((degree, i) =>
+      addLead(2, i * 2, degree, {
+        velocity: sectionGain[2] * (i === 0 ? 0.9 : 0.72),
+        durationBeats: 0.72
+      })
+    );
+    addLead(3, 0, motif[2], { velocity: sectionGain[3] * 0.8, durationBeats: 0.8 });
+    addLead(3, 4, motif[3], { velocity: sectionGain[3] * 0.76, durationBeats: 0.55 });
 
-    // B: development. Keep the motif's contour but vary intervals and rhythm.
+    // II. Development: fragment, vary and reassemble the motif.
     const development = [
-      { bar: 2, slots: [0, 2, 5, 7], degrees: [motif[0], motif[1] + 1, motif[2], motif[3]] },
-      { bar: 3, slots: [0, 1, 4, 6, 7], degrees: [motif[0], motif[1], motif[2] + 1, motif[3], motif[2]] }
+      { bar: 4, slots: [0, 2, 5, 7], degrees: [motif[0], motif[1] + 1, motif[2], motif[3]] },
+      { bar: 5, slots: [0, 1, 4, 6, 7], degrees: [motif[0], motif[1], motif[2] + 1, motif[3], motif[2]] },
+      { bar: 6, slots: [0, 2, 4, 6], degrees: [motif[1], motif[2], motif[3] + 1, motif[2]] },
+      { bar: 7, slots: [0, 2, 4], degrees: [motif[0], motif[2], motif[3]] }
     ];
     for (const phrase of development) {
       phrase.slots.forEach((slot, i) => addLead(phrase.bar, slot, phrase.degrees[i], {
@@ -183,101 +204,151 @@ export function generateComposition(mode: Mode, options: {
       }));
     }
 
-    // C: climax. The motif is sequenced more quickly in a higher register.
-    const climaxContour = [motif[0], motif[1], motif[2] + 1, motif[3] + 1, motif[2], motif[3], motif[1] + 1, motif[3] + 2];
-    for (const bar of [4, 5]) {
-      climaxContour.forEach((degree, i) => addLead(bar, i, degree + (bar === 5 ? 1 : 0), {
+    // III. Climax: expand the motif into a higher, more active sequence.
+    const climaxContour = [
+      motif[0], motif[1], motif[2] + 1, motif[3] + 1,
+      motif[2], motif[3], motif[1] + 1, motif[3] + 2
+    ];
+    for (const bar of [8, 9, 10, 11]) {
+      climaxContour.forEach((degree, i) => addLead(bar, i, degree + (bar === 9 || bar === 10 ? 1 : 0), {
         octave: 2,
         velocity: sectionGain[bar] * (i === 0 || i === 4 ? 0.96 : 0.82),
-        durationBeats: 0.38,
+        durationBeats: bar === 11 ? 0.32 : 0.38,
         wave: "triangle"
       }));
     }
 
-    // D: reprise and cadence. Recall the opening rhythm and contour, then
-    // replace the final motif tone with the tonic and let it ring to bar end.
-    addLead(6, 0, motif[0], { velocity: sectionGain[6] * 0.9, durationBeats: 1.0 });
-    addLead(6, 4, motif[1], { velocity: sectionGain[6] * 0.78, durationBeats: 0.85 });
-    addLead(7, 0, motif[2], { velocity: sectionGain[7] * 0.82, durationBeats: 1.0 });
-    addLead(7, 4, 0, { velocity: 0.48, durationBeats: 1.95, wave: "triangle" });
+    // IV. Reprise: bring the original contour back down, then resolve.
+    addLead(12, 0, motif[0], { velocity: sectionGain[12] * 0.9, durationBeats: 1.15 });
+    addLead(12, 4, motif[1], { velocity: sectionGain[12] * 0.78, durationBeats: 0.95 });
+    addLead(13, 0, motif[2], { velocity: sectionGain[13] * 0.86, durationBeats: 1.1 });
+    addLead(13, 4, motif[3], { velocity: sectionGain[13] * 0.78, durationBeats: 0.95 });
+    addLead(14, 0, motif[0], { velocity: sectionGain[14] * 0.82, durationBeats: 1.0 });
+    addLead(14, 4, motif[1], { velocity: sectionGain[14] * 0.68, durationBeats: 0.85 });
+    addLead(14, 6, scaleNotes.length - 1, { velocity: 0.34, durationBeats: 0.3 });
+    addLead(15, 0, 0, { velocity: 0.38, durationBeats: 3.82, wave: "triangle" });
+
+    // Transitional pickups point toward the next harmonic destination.
+    for (const bar of [3, 7, 11]) {
+      const nextChordIndex = Math.floor((bar + 1) / 2);
+      const targetDegree = chordProgression[nextChordIndex];
+      const transitionGain = sectionGain[bar];
+      addLead(bar, 6, targetDegree - 1, {
+        velocity: transitionGain * 0.66, durationBeats: 0.28
+      });
+      addLead(bar, 7, targetDegree, {
+        velocity: transitionGain * 0.78, durationBeats: 0.26
+      });
+    }
   }
-  // Optional harmonic foundation: four two-bar chords and bass pulses.
+
+  // Optional harmonic foundation: eight two-bar chords, voice-led bass motion,
+  // overlapping pad releases and anticipations into every new harmony.
   if (musicalArrangement) {
-  const scaleNotes = SCALES[scale] ?? SCALES.Lydian;
-  const progression = scale === "Minor" ? [0, 5, 3, 0] : [0, 3, 4, 0];
-  const accompanimentArc = [0.38, 0.48, 0.62, 0.74, 1.0, 0.94, 0.55, 0.28];
-  const chordRoots: number[] = [];
-  let previousVoicing = [root + 12, root + 16, root + 19];
-  for (let section = 0; section < 4; section++) {
-    // The average mathematical output gently selects nearby harmonic colors;
-    // the functional progression keeps the result musically grounded.
-    const sectionValues = values.slice(section * 16, (section + 1) * 16);
-    const mean = sectionValues.length ? sectionValues.reduce((sum, value) => sum + value, 0) / sectionValues.length : 0.5;
-    const degree = progression[section];
-    const chordRoot = root + scaleNotes[degree % scaleNotes.length];
-    chordRoots.push(chordRoot);
-    const triad = [0, 2, 4].map(offset => {
-      const index = degree + offset;
-      return root + 12 + scaleNotes[index % scaleNotes.length] + (index >= scaleNotes.length ? 12 : 0);
-    });
-    const previous = section === 0 ? [root + 12, root + 16, root + 19] : previousVoicing;
-    const candidates = [0, 1, 2].map(inversion => {
-      const rotated = [...triad.slice(inversion), ...triad.slice(0, inversion).map(note => note + 12)];
-      return rotated.map((note, voice) => {
-        const target = previous[voice];
-        return [note - 12, note, note + 12, note + 24]
-          .sort((a, b) => Math.abs(a - target) - Math.abs(b - target))[0];
+    const accompanimentArc = [
+      0.34, 0.4, 0.46, 0.52,
+      0.58, 0.64, 0.7, 0.76,
+      0.92, 1.0, 1.0, 0.94,
+      0.74, 0.62, 0.46, 0.28
+    ];
+    const chordLevels = [0.42, 0.5, 0.58, 0.68, 0.82, 1.0, 0.72, 0.38];
+    const chordRoots: number[] = [];
+    let previousVoicing = [root + 12, root + 16, root + 19];
+
+    for (let section = 0; section < 8; section++) {
+      const sectionValues = values.slice(section * 16, (section + 1) * 16);
+      const mean = sectionValues.length
+        ? sectionValues.reduce((sum, value) => sum + value, 0) / sectionValues.length
+        : 0.5;
+      const degree = chordProgression[section];
+      const chordRoot = root + scaleNotes[degree % scaleNotes.length];
+      chordRoots.push(chordRoot);
+      const triad = [0, 2, 4].map(offset => {
+        const index = degree + offset;
+        return root + 12 + scaleNotes[index % scaleNotes.length] +
+          (index >= scaleNotes.length ? 12 : 0);
       });
-    });
-    const voicing = candidates.sort((a, b) =>
-      a.reduce((sum, note, i) => sum + Math.abs(note - previous[i]), 0) -
-      b.reduce((sum, note, i) => sum + Math.abs(note - previous[i]), 0)
-    )[0];
-    previousVoicing = voicing;
-    const seventhIndex = degree + 6;
-    const seventh = root + 12 + scaleNotes[seventhIndex % scaleNotes.length] +
-      (seventhIndex >= scaleNotes.length ? 12 : 0);
-    const chordTime = section * 2 * 4 * beat;
-    for (let voice = 0; voice < 3; voice++) {
-      const tone = voicing[voice];
-      const pan = (voice - 1) * 0.3;
-      const sectionLevel = musicalExpression ? [0.52, 0.72, 1, 0.42][section] : 1;
-      events.push({ time: chordTime, duration: 7.7 * beat, frequency: midiHz(tone), velocity: 0.085 * sectionLevel, waveform: "triangle", pan, voice: "pad" });
-    }
-    // A soft diatonic seventh adds color without muddying the triad.
-    events.push({ time: chordTime, duration: 7.7 * beat, frequency: midiHz(seventh), velocity: 0.026 * (0.7 + mean * 0.5), waveform: "sine", pan: 0.12, voice: "pad" });
-    for (let bar = 0; bar < 2; bar++) {
-      const absoluteBar = section * 2 + bar;
-      const bassTime = chordTime + bar * 4 * beat;
-      const arc = musicalExpression ? accompanimentArc[absoluteBar] : 1;
-      events.push({ time: bassTime, duration: 1.65 * beat, frequency: midiHz(chordRoot - 12), velocity: 0.24 * arc, waveform: "triangle", pan: -0.08, voice: "bass" });
-      events.push({ time: bassTime + 2 * beat, duration: 1.25 * beat, frequency: midiHz(chordRoot - 12), velocity: 0.15 * arc, waveform: "triangle", pan: 0.08, voice: "bass" });
-    }
-  }
-    // Bass approaches the next chord just before each two-bar harmonic change.
-    for (let section = 0; section < 3; section++) {
-      const bar = section * 2 + 1;
-      const arc = musicalExpression ? accompanimentArc[bar] : 1;
+      const previous = section === 0 ? [root + 12, root + 16, root + 19] : previousVoicing;
+      const candidates = [0, 1, 2].map(inversion => {
+        const rotated = [...triad.slice(inversion), ...triad.slice(0, inversion).map(note => note + 12)];
+        return rotated.map((note, voice) => {
+          const target = previous[voice];
+          return [note - 12, note, note + 12, note + 24]
+            .sort((a, b) => Math.abs(a - target) - Math.abs(b - target))[0];
+        });
+      });
+      const voicing = candidates.sort((a, b) =>
+        a.reduce((sum, note, i) => sum + Math.abs(note - previous[i]), 0) -
+        b.reduce((sum, note, i) => sum + Math.abs(note - previous[i]), 0)
+      )[0];
+      previousVoicing = voicing;
+      const seventhIndex = degree + 6;
+      const seventh = root + 12 + scaleNotes[seventhIndex % scaleNotes.length] +
+        (seventhIndex >= scaleNotes.length ? 12 : 0);
+      const chordTime = section * 8 * beat;
+      const chordDuration = (section === 7 ? 8 : 8.48) * beat;
+
+      for (let voice = 0; voice < 3; voice++) {
+        const tone = voicing[voice];
+        const pan = (voice - 1) * 0.3;
+        const velocity = 0.078 * chordLevels[section];
+        events.push({
+          time: chordTime, duration: chordDuration, frequency: midiHz(tone),
+          velocity, velocityEnd: section === 7 ? 0.002 : velocity * 0.3,
+          waveform: "triangle", pan, voice: "pad"
+        });
+      }
+      const seventhVelocity = 0.02 * (0.7 + mean * 0.5) * chordLevels[section];
       events.push({
-        time: (section + 1) * 8 * beat - 0.5 * beat,
-        duration: 0.38 * beat,
-        frequency: midiHz(chordRoots[section + 1] - 12),
-        velocity: 0.11 * arc,
-        waveform: "triangle",
-        pan: 0,
-        voice: "bass"
+        time: chordTime, duration: chordDuration, frequency: midiHz(seventh),
+        velocity: seventhVelocity, velocityEnd: section === 7 ? 0.001 : seventhVelocity * 0.3,
+        waveform: "sine", pan: 0.12, voice: "pad"
+      });
+
+      for (let bar = 0; bar < 2; bar++) {
+        const absoluteBar = section * 2 + bar;
+        const bassTime = chordTime + bar * 4 * beat;
+        const arc = musicalExpression ? accompanimentArc[absoluteBar] : 0.72;
+        events.push({
+          time: bassTime, duration: 1.55 * beat, frequency: midiHz(chordRoot - 12),
+          velocity: 0.22 * arc, waveform: "triangle", pan: -0.08, voice: "bass"
+        });
+        events.push({
+          time: bassTime + 2 * beat, duration: 1.05 * beat, frequency: midiHz(chordRoot - 5),
+          velocity: 0.13 * arc, waveform: "triangle", pan: 0.08, voice: "bass"
+        });
+      }
+    }
+
+    // A short bass approach anticipates every two-bar chord change.
+    for (let section = 1; section < 8; section++) {
+      const bar = section * 2 - 1;
+      const time = section * 8 * beat - 0.5 * beat;
+      const arc = musicalExpression ? accompanimentArc[bar] : 0.72;
+      events.push({
+        time, duration: 0.36 * beat, frequency: midiHz(chordRoots[section] - 13),
+        velocity: 0.12 * arc, waveform: "triangle", pan: 0, voice: "bass"
       });
     }
+
     if (musicalExpression) {
-      const drumBars = [
-        [{ slot: 0, kind: "kick" as const, level: 0.34 }],
-        [{ slot: 0, kind: "kick" as const, level: 0.42 }],
-        [{ slot: 0, kind: "kick" as const, level: 0.5 }, { slot: 4, kind: "snare" as const, level: 0.26 }],
-        [{ slot: 0, kind: "kick" as const, level: 0.58 }, { slot: 4, kind: "snare" as const, level: 0.34 }, { slot: 6, kind: "hat" as const, level: 0.12 }],
-        [{ slot: 0, kind: "kick" as const, level: 0.78 }, { slot: 2, kind: "hat" as const, level: 0.2 }, { slot: 4, kind: "snare" as const, level: 0.52 }, { slot: 6, kind: "hat" as const, level: 0.2 }],
-        [{ slot: 0, kind: "kick" as const, level: 0.74 }, { slot: 2, kind: "hat" as const, level: 0.18 }, { slot: 3, kind: "kick" as const, level: 0.34 }, { slot: 4, kind: "snare" as const, level: 0.5 }, { slot: 6, kind: "hat" as const, level: 0.2 }],
-        [{ slot: 0, kind: "kick" as const, level: 0.42 }, { slot: 4, kind: "snare" as const, level: 0.22 }],
-        [{ slot: 0, kind: "kick" as const, level: 0.24 }]
+      const drumBars: Array<Array<{ slot: number; kind: "kick" | "snare" | "hat"; level: number }>> = [
+        [{ slot: 0, kind: "kick", level: 0.26 }],
+        [{ slot: 0, kind: "kick", level: 0.28 }],
+        [{ slot: 0, kind: "kick", level: 0.32 }, { slot: 4, kind: "snare", level: 0.16 }],
+        [{ slot: 0, kind: "kick", level: 0.38 }, { slot: 4, kind: "snare", level: 0.2 }, { slot: 6, kind: "hat", level: 0.1 }, { slot: 7, kind: "snare", level: 0.22 }],
+        [{ slot: 0, kind: "kick", level: 0.4 }],
+        [{ slot: 0, kind: "kick", level: 0.44 }, { slot: 4, kind: "snare", level: 0.22 }],
+        [{ slot: 0, kind: "kick", level: 0.48 }, { slot: 6, kind: "hat", level: 0.12 }],
+        [{ slot: 0, kind: "kick", level: 0.54 }, { slot: 4, kind: "snare", level: 0.28 }, { slot: 6, kind: "hat", level: 0.14 }, { slot: 7, kind: "snare", level: 0.25 }],
+        [{ slot: 0, kind: "kick", level: 0.7 }, { slot: 2, kind: "hat", level: 0.18 }, { slot: 4, kind: "snare", level: 0.42 }, { slot: 6, kind: "hat", level: 0.18 }],
+        [{ slot: 0, kind: "kick", level: 0.74 }, { slot: 2, kind: "hat", level: 0.18 }, { slot: 4, kind: "snare", level: 0.44 }, { slot: 6, kind: "hat", level: 0.18 }],
+        [{ slot: 0, kind: "kick", level: 0.78 }, { slot: 2, kind: "hat", level: 0.2 }, { slot: 3, kind: "kick", level: 0.3 }, { slot: 4, kind: "snare", level: 0.48 }, { slot: 6, kind: "hat", level: 0.2 }],
+        [{ slot: 0, kind: "kick", level: 0.74 }, { slot: 2, kind: "hat", level: 0.18 }, { slot: 4, kind: "snare", level: 0.44 }, { slot: 6, kind: "hat", level: 0.18 }, { slot: 7, kind: "snare", level: 0.3 }],
+        [{ slot: 0, kind: "kick", level: 0.46 }, { slot: 4, kind: "snare", level: 0.22 }],
+        [{ slot: 0, kind: "kick", level: 0.4 }],
+        [{ slot: 0, kind: "kick", level: 0.32 }, { slot: 4, kind: "snare", level: 0.16 }],
+        [{ slot: 0, kind: "kick", level: 0.22 }]
       ];
       drumBars.forEach((hits, bar) => hits.forEach(hit => {
         events.push({

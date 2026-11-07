@@ -60,15 +60,17 @@ describe("mathematical generators", () => {
     expect(expressive.values).toEqual(plain.values);
     expect(expressive.events.some(event => event.time > 0 && event.voice === "lead")).toBe(true);
   });
-  it("creates a clear eight-bar arc with a sparse opening, dense climax and tonic ending", () => {
+  it("creates a connected 16-bar arc with a sparse opening, rising climax and tonic ending", () => {
     const composition = generateComposition("chaos", { bpm: 120, root: 60, scale: "Major", musicalExpression: true });
     const beat = 0.5;
+    const barDuration = 4 * beat;
     const lead = composition.events.filter(event => event.voice === "lead");
-    const counts = Array.from({ length: 8 }, (_, bar) =>
-      lead.filter(event => event.time >= bar * 4 * beat && event.time < (bar + 1) * 4 * beat).length
+    const counts = Array.from({ length: 16 }, (_, bar) =>
+      lead.filter(event => event.time >= bar * barDuration && event.time < (bar + 1) * barDuration).length
     );
-    expect(counts[0]).toBeLessThan(counts[4]);
-    expect(counts[4]).toBeGreaterThanOrEqual(8);
+    expect(counts[0]).toBeLessThan(counts[8]);
+    expect(counts[8]).toBeGreaterThanOrEqual(8);
+    expect(counts[12]).toBeLessThan(counts[8]);
     const finalNote = lead.reduce((latest, event) => event.time > latest.time ? event : latest);
     expect(finalNote.frequency).toBeCloseTo(440 * Math.pow(2, (72 - 69) / 12), 5);
     expect(finalNote.time + finalNote.duration).toBeLessThanOrEqual(composition.duration);
@@ -80,19 +82,19 @@ describe("mathematical generators", () => {
     const lead = composition.events.filter(event => event.voice === "lead");
     const at = (seconds: number) => lead.find(event => Math.abs(event.time - seconds) < 1e-8)!;
     const opening = [at(0), at(1), at(2), at(3)];
-    const reprise = [at(12), at(13), at(14), at(15)];
+    const reprise = [at(24), at(25), at(26), at(27)];
     expect(reprise.slice(0, 3).map(note => note.frequency))
       .toEqual(opening.slice(0, 3).map(note => note.frequency));
     expect(reprise[3].frequency).toBe(440 * Math.pow(2, (72 - 69) / 12));
   });
-  it("makes the climax denser and higher than the opening", () => {
+  it("makes the four-bar climax denser and higher than the opening", () => {
     const composition = generateComposition("chaos", { bpm: 120, musicalExpression: true });
     const lead = composition.events.filter(event => event.voice === "lead");
     const inBar = (bar: number) => lead.filter(event => event.time >= bar * 2 && event.time < (bar + 1) * 2);
-    expect(inBar(4)).toHaveLength(8);
-    expect(inBar(5)).toHaveLength(8);
-    expect(inBar(4).length).toBeGreaterThan(inBar(0).length);
-    expect(Math.min(...inBar(4).map(event => event.frequency)))
+    expect(inBar(8)).toHaveLength(8);
+    expect(inBar(9)).toHaveLength(8);
+    expect(inBar(8).length).toBeGreaterThan(inBar(0).length);
+    expect(Math.min(...inBar(8).map(event => event.frequency)))
       .toBeGreaterThan(Math.min(...inBar(0).map(event => event.frequency)));
   });
   it("returns to the tonic harmony and uses four-voice chord colors", () => {
@@ -101,36 +103,63 @@ describe("mathematical generators", () => {
     });
     const pads = composition.events.filter(event => event.voice === "pad");
     const first = pads.filter(event => event.time === 0).map(event => Math.round(69 + 12 * Math.log2(event.frequency / 440)) % 12).sort();
-    const final = pads.filter(event => event.time === 12).map(event => Math.round(69 + 12 * Math.log2(event.frequency / 440)) % 12).sort();
+    const final = pads.filter(event => event.time === 28).map(event => Math.round(69 + 12 * Math.log2(event.frequency / 440)) % 12).sort();
     expect(first).toEqual(final);
     expect(pads.filter(event => event.time === 0)).toHaveLength(4);
   });
-  it("builds the bass and chord layers toward the climax, then releases", () => {
+  it("builds bass and pad energy toward the climax, then releases for the reprise", () => {
     const composition = generateComposition("mandelbrot", {
       bpm: 120, musicalArrangement: true, musicalExpression: true
     });
     const bass = composition.events.filter(event => event.voice === "bass");
     const pads = composition.events.filter(event => event.voice === "pad");
     const bassAtBar = (bar: number) => bass.find(event => Math.abs(event.time - bar * 2) < 1e-8)!;
-    expect(bassAtBar(4).velocity).toBeGreaterThan(bassAtBar(0).velocity);
-    expect(bassAtBar(7).velocity).toBeLessThan(bassAtBar(4).velocity);
-    expect(pads[10].velocity).toBeGreaterThan(pads[0].velocity);
-    expect(pads[14].velocity).toBeLessThan(pads[10].velocity);
+    const padLevelAt = (time: number) => Math.max(...pads.filter(event => event.time === time).map(event => event.velocity));
+    expect(bassAtBar(8).velocity).toBeGreaterThan(bassAtBar(0).velocity);
+    expect(bassAtBar(15).velocity).toBeLessThan(bassAtBar(8).velocity);
+    expect(padLevelAt(20)).toBeGreaterThan(padLevelAt(0));
+    expect(padLevelAt(28)).toBeLessThan(padLevelAt(20));
+    expect(pads[0].duration).toBeGreaterThan(8 * 0.5);
   });
-  it("adds a sparse drum part that becomes denser at the climax and clears for the ending", () => {
+  it("adds sparse drums, a fuller climax and fills that lead into the next movement", () => {
     const composition = generateComposition("chaos", {
       bpm: 120, musicalArrangement: true, musicalExpression: true
     });
     const drums = composition.events.filter(event => event.voice === "percussion");
     const inBar = (bar: number) => drums.filter(event => event.time >= bar * 2 && event.time < (bar + 1) * 2);
-    expect(inBar(0).length).toBeLessThan(inBar(4).length);
-    expect(inBar(4).some(event => event.percussionKind === "kick")).toBe(true);
-    expect(inBar(4).some(event => event.percussionKind === "snare")).toBe(true);
-    expect(inBar(7).length).toBeLessThan(inBar(4).length);
+    expect(inBar(0).length).toBeLessThan(inBar(8).length);
+    expect(inBar(8).some(event => event.percussionKind === "kick")).toBe(true);
+    expect(inBar(8).some(event => event.percussionKind === "snare")).toBe(true);
+    expect(inBar(15).length).toBeLessThan(inBar(8).length);
+    for (const bar of [3, 7, 11]) {
+      expect(inBar(bar).some(event => event.time >= bar * 2 + 1.5)).toBe(true);
+    }
   });
   it("omits the drum arrangement when musical expression is disabled", () => {
     const composition = generateComposition("chaos", { musicalExpression: false });
     expect(composition.events.some(event => event.voice === "percussion")).toBe(false);
+  });
+  it("targets a 30-second default and connects the four movements with pickups and harmonic overlaps", () => {
+    const composition = generateComposition("mandelbrot");
+    const beat = 60 / 128;
+    const barDuration = beat * 4;
+    const lead = composition.events.filter(event => event.voice === "lead");
+    const bass = composition.events.filter(event => event.voice === "bass");
+    const pads = composition.events.filter(event => event.voice === "pad");
+    expect(composition.duration).toBeCloseTo(30, 8);
+    expect(composition.values).toHaveLength(128);
+    expect(Math.max(...lead.map(event => event.time))).toBeGreaterThan(27);
+    for (const bar of [3, 7, 11]) {
+      expect(lead.some(event =>
+        event.time >= bar * barDuration + 3 * beat &&
+        event.time < (bar + 1) * barDuration
+      )).toBe(true);
+    }
+    for (let chord = 1; chord < 8; chord++) {
+      const anticipation = chord * 8 * beat - 0.5 * beat;
+      expect(bass.some(event => Math.abs(event.time - anticipation) < 1e-8)).toBe(true);
+    }
+    expect(pads.some(event => event.duration > 8 * beat)).toBe(true);
   });
   it("keeps musical expression deterministic for the same seed", () => {
     const a = generateComposition("chaos", { seed: 0.42, musicalExpression: true });

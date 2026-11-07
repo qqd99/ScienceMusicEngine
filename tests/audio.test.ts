@@ -40,7 +40,7 @@ describe("procedural instrument controls", () => {
     expect(a).toEqual(b);
     expect(a.some(event => event.voice === "bass")).toBe(true);
     expect(a.some(event => event.voice === "pad")).toBe(true);
-    expect(a.filter(event => event.voice === "bass")).toHaveLength(8);
+    expect(a.filter(event => event.voice === "bass")).toHaveLength(16);
     expect(a.filter(event => event.voice === "pad")).toHaveLength(16);
   });
 
@@ -70,7 +70,7 @@ describe("procedural instrument controls", () => {
     expect(first.some(event => event.voice === "lead")).toBe(true);
     expect(first.some(event => event.voice === "answer")).toBe(true);
     expect(first.filter(event => event.voice === "texture").length).toBeGreaterThan(0);
-    expect(first.filter(event => event.voice === "texture").length).toBeLessThan(8);
+    expect(first.filter(event => event.voice === "texture").length).toBeLessThan(16);
     expect(first.some(event => event.voice === "bass")).toBe(true);
     expect(first.some(event => event.voice === "pad")).toBe(true);
   });
@@ -94,7 +94,7 @@ describe("procedural instrument controls", () => {
   });
 
   it("adapts orchestration to phrase density, rests and changing musical energy", () => {
-    const duration = 32;
+    const duration = 64;
     const beat = 1;
     const events: NoteEvent[] = [];
     const add = (
@@ -182,7 +182,7 @@ describe("procedural instrument controls", () => {
       { time: 6, duration: 0.3, frequency: 523, velocity: 0.5, waveform: "sine", pan: 0, voice: "lead" },
       { time: 1, duration: 0.5, frequency: 659, velocity: 0.2, waveform: "sawtooth", pan: 0.2, voice: "texture" }
     ];
-    const session = new AdaptiveConductorSession(events, 32, {
+    const session = new AdaptiveConductorSession(events, 64, {
       piano: true, analog: true, plucked: false, cinematicBass: false, atmosphere: false
     }, true);
     const conducted = session.prepareAll();
@@ -201,7 +201,7 @@ describe("procedural instrument controls", () => {
     const instruments = {
       piano: true, analog: false, plucked: false, cinematicBass: false, atmosphere: false
     };
-    const session = new AdaptiveConductorSession(events, 32, instruments, true);
+    const session = new AdaptiveConductorSession(events, 64, instruments, true);
     const firstPhrase = session.prepareThrough(7.99);
     expect(session.getDecision(0)).not.toBeNull();
     expect(session.getDecision(1)).toBeNull();
@@ -225,7 +225,7 @@ describe("procedural instrument controls", () => {
       { time: 8.45, duration: 0.2, frequency: 660, velocity: 0.2, waveform: "triangle", pan: 0, voice: "answer" },
       { time: 13.1, duration: 0.3, frequency: 880, velocity: 0.2, waveform: "sawtooth", pan: 0, voice: "texture" }
     );
-    const session = new AdaptiveConductorSession(events, 32, undefined, true);
+    const session = new AdaptiveConductorSession(events, 64, undefined, true);
     const conducted = session.prepareAll();
     expect(conducted.some(event => event.voice === "answer")).toBe(false);
     expect(conducted.some(event => event.voice === "texture")).toBe(false);
@@ -244,7 +244,7 @@ describe("procedural instrument controls", () => {
       { time: 8.45, duration: 0.2, frequency: 660, velocity: 0.2, waveform: "triangle", pan: 0, voice: "answer" },
       { time: 13.1, duration: 0.3, frequency: 880, velocity: 0.2, waveform: "sawtooth", pan: 0, voice: "texture" }
     );
-    const conducted = applyEnsembleConductor(events, 32);
+    const conducted = applyEnsembleConductor(events, 64);
     expect(conducted.some(event => event.voice === "answer")).toBe(false);
     expect(conducted.some(event => event.voice === "texture")).toBe(false);
   });
@@ -291,9 +291,9 @@ describe("procedural instrument controls", () => {
     expect(liveEvents).toEqual(exportEvents);
     expect(liveEvents.some(event => event.voice === "answer")).toBe(true);
     expect(liveEvents.some(event => event.voice === "percussion" && event.time >= composition.duration * 0.5)).toBe(true);
-    for (let phrase = 0; phrase < 4; phrase++) {
-      const start = phrase * composition.duration / 4;
-      const end = (phrase + 1) * composition.duration / 4;
+    for (let phrase = 0; phrase < 8; phrase++) {
+      const start = phrase * composition.duration / 8;
+      const end = (phrase + 1) * composition.duration / 8;
       const phraseRoles = new Set(liveEvents
         .filter(event => event.time >= start && event.time < end && event.voice !== "lead")
         .map(event => event.voice));

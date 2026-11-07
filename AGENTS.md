@@ -35,13 +35,13 @@ The Mathematics Lab currently contains four experiments:
 - **Mandelbrot:** fractal escape-time values influence the generated musical sequence.
 - **Euclidean rhythms:** distribute pulses mathematically across a cycle.
 - **Chaos map:** logistic-map dynamics generate deterministic evolving values and musical events.
-- **Shepard illusion:** overlapping octave layers create the auditory illusion of continuous ascent. Preserve this experiment's special behavior; do not force it into the ordinary eight-bar song form.
+- **Shepard illusion:** overlapping octave layers create the auditory illusion of continuous ascent. Preserve this experiment's special behavior; do not force it into the ordinary 16-bar song form.
 
 The browser UI includes mathematical visualization, a moving playhead, tempo, complexity, root-note, harmonic-color and seed controls, a unified Play/Stop control, live parameter updates, output volume, sound-character selection, independent feature/instrument controls, instrument mixer, and offline WAV export.
 
 ### Musical form and sound system already implemented
 
-- The ordinary musical experiments use an **eight-bar composition** with a recognizable motif: opening, development, climax, and ending/reprise. The motif is varied during development, raised and made denser at the climax, then recalled and resolved toward the tonic.
+- The ordinary musical experiments use a **16-bar composition** with four connected four-bar movements: opening, development, climax, and reprise/cadence. At the default 128 BPM, the piece lasts about 30 seconds. The motif is varied during development, raised and made denser at the climax, then recalled and resolved toward the tonic.
 - The composition can include harmonic arrangement, chord inversions/voice leading, bass movement, and procedurally synthesized kick/snare/hi-hat percussion.
 - The five dedicated instrument layers are:
   - **Piano:** carries the lead melody.
@@ -107,22 +107,17 @@ After editing:
 
 ## 6. Current handoff / resume point
 
-The user approved a shift from a fixed instrument scheduler to a **score-aware adaptive conductor** that can reconsider orchestration during playback when the musical situation changes. The first implementation is now committed and verified.
+The user auditioned the adaptive conductor and accepted its instrument selection and balance, but said the musical storytelling was weak, the movements had no transitions, and the piece should last about 30 seconds.
 
-Current behavior:
+The requested refinement is now implemented as a **16-bar form** with four connected four-bar movements (opening, development, climax, reprise/cadence), eight two-bar conductor decisions, and a 30-second default at 128 BPM.
 
-- The eight-bar composition is analyzed as four two-bar phrases.
-- Each phrase is evaluated using lead-note density, note durations, rhythmic placement, velocity, rests and changes from the previous phrase.
-- The conductor carries previous phrase density, energy and selected roles forward as context.
-- It chooses at most two supporting roles per phrase. Enabled instruments are available, not automatically active.
-- Bass, pads, plucked answers, analog counterlines and percussion are selected according to the phrase's musical context. Percussion yields downbeats already owned by bass.
-- `AdaptiveConductorSession` prepares one phrase at a time. Live playback asks for the next phrase shortly before its entrance; the scheduler only executes the prepared events.
-- Offline WAV export walks the same deterministic session, preserving live/offline event parity.
-- The conductor readout shows the current phrase's selected roles.
-- The Shepard illusion remains a special continuous texture and bypasses ordinary ensemble conducting.
-- Adaptation is score-aware; microphone input and real-time audio recognition are not part of this version.
+- Preserve the existing selective adaptive orchestration: at most two support roles per two-bar phrase, enabled instruments are only available, and roles adapt to score density/rests/energy.
+- Use melodic pickups in the last bar of the first three movements, bass anticipations before every two-bar chord change, overlapping pad releases, and short percussion fills to connect sections.
+- Keep a small continuity preference for roles across phrase boundaries; do not force arbitrary role changes.
+- Live playback and offline WAV rendering must use the same deterministic events.
+- The Shepard illusion remains its own continuous texture, not an ordinary song arrangement.
 
-**Next action:** ask the user to audition the live app with all five instruments enabled, using the same mode and seed for comparison. Listen for whether the conductor changes its support as the melody becomes sparse or dense, whether instruments take turns naturally, and whether the climax and ending feel convincing. Passing tests does not prove musical quality; use the user's listening feedback before further tuning or adding features.
+**Next action:** ask the user to audition the new 30-second default with all instruments enabled. Focus on whether the four movements now feel connected and whether the climax and reprise form one coherent musical arc. Do not claim musical quality from tests alone.
 
 ### Current output-level revision
 
@@ -130,7 +125,7 @@ The user reported that the complete mix was barely audible even at maximum outpu
 
 ### Last verified adaptive-conductor implementation
 
-- Verified code commit: `3432696c41961559d64a086ea17ddfa1f10db8ab` — “Preserve percussion through sustained high-energy phrases”.
+- Previous verified adaptive-conductor code commit: `3432696c41961559d64a086ea17ddfa1f10db8ab` — “Preserve percussion through sustained high-energy phrases”.
 - GitHub Actions run **#109** completed successfully, including `npm install`, `npm test`, `npm run build`, Pages artifact upload and deployment.
 - The verified suite contains **41 test cases** (21 audio tests and 20 mathematics tests).
 - The implementation uses `AdaptiveConductorSession` for phrase-by-phrase decisions in both live playback and offline rendering.

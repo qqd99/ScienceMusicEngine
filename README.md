@@ -17,9 +17,9 @@ After GitHub Pages is enabled with **Settings → Pages → Source: GitHub Actio
 
 ## Composition and orchestration
 
-Ordinary musical experiments use a deterministic eight-bar form: opening, development, climax, and ending/reprise. A four-note motif is selected from the mathematical sequence, transformed through the middle sections, raised and made denser at the climax, then recalled and resolved toward the tonic.
+Ordinary musical experiments use a deterministic **16-bar form** with four connected movements: opening, development, climax, and reprise/cadence. At the default 128 BPM, the composition lasts approximately **30 seconds**. A four-note motif is selected from the mathematical sequence, transformed through the middle sections, raised and made denser at the climax, then recalled and resolved toward the tonic. Short melodic pickups, bass anticipations, overlapping chord-pad releases and percussion fills connect the movements rather than letting them sound like separate blocks.
 
-**Musical Arrangement** adds voice-led chords, bass movement and synthesized kick/snare/hat percussion. **Musical Expression** adds the eight-bar motif and shapes the arrangement around the phrase. These features have independent ON/OFF controls.
+**Musical Arrangement** adds voice-led chords, bass movement and synthesized kick/snare/hat percussion. **Musical Expression** adds the 16-bar motif and shapes the arrangement around the phrase. These features have independent ON/OFF controls.
 
 The five independently switchable and mixable instrument layers are:
 
@@ -40,7 +40,7 @@ The conductor is an **adaptive, score-aware system**, not a fixed instrument sch
 - Plucked Strings answer only when a real melodic gap can contain the response.
 - Warm Analog competes with the strings for the same melodic space and is chosen only for sufficiently open phrases.
 - Percussion responds to phrase energy and rhythmic activity, yielding downbeats already owned by bass.
-- The conductor can change its supporting roles at each phrase boundary as density, energy and available space change.
+- The conductor can change its supporting roles at each phrase boundary as density, energy and available space change, while a small continuity preference avoids arbitrary instrument handoffs.
 
 Live playback prepares each upcoming phrase just ahead of its entrance. Offline WAV rendering walks the same deterministic conductor session from beginning to end, preserving exact event parity. Identical composition, seed and instrument settings produce identical decisions. Disabling the conductor bypasses its orchestration.
 
@@ -85,5 +85,5 @@ npm run build
 
 - Mathematical mappings are musical interpretations, not unique scientific truths; they will be refined through listening tests.
 - Shepard tones are finite layered approximations, not an actually infinite sound.
-- The player loops an eight-bar generated phrase. Playback loudness still depends on the browser, operating-system and device volume.
+- The player loops a 16-bar generated phrase (about 30 seconds at the default tempo). Playback loudness still depends on the browser, operating-system and device volume.
 - The app uses a hosted font stylesheet for typography; all visuals are drawn with CSS and Canvas.

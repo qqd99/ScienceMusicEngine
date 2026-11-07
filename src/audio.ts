@@ -1,4 +1,4 @@
-import type { Composition, NoteEvent } from "./math";
+import { COMPOSITION_BARS, type Composition, type NoteEvent } from "./math";
 export type SoundProfile = "hybrid-cinematic" | "natural" | "electronic";
 export type InstrumentLevels = Record<keyof InstrumentSettings, number>;
 export const DEFAULT_INSTRUMENT_LEVELS: InstrumentLevels = { piano: 0.9, analog: 0.72, plucked: 0.82, cinematicBass: 0.9, atmosphere: 0.72 };
@@ -65,7 +65,7 @@ function findLeadGaps(lead: NoteEvent[], duration: number, beat: number, minimum
   for (let index = 0; index < ordered.length; index++) {
     const source = ordered[index];
     const bar = Math.floor(source.time / barDuration);
-    if (bar < 0 || bar >= 8) continue;
+    if (bar < 0 || bar >= COMPOSITION_BARS) continue;
     const barEnd = Math.min(duration, (bar + 1) * barDuration);
     const next = ordered[index + 1];
     const nextInBar = next && Math.floor(next.time / barDuration) === bar ? next.time : barEnd;
@@ -97,7 +97,7 @@ export function resolveInstrumentEvents(composition: Composition, instruments: I
   const events = [...composition.events];
   const lead = composition.events.filter(event => (event.voice ?? "lead") === "lead");
   if (!lead.length) return events;
-  const beat = composition.duration / 32;
+  const beat = composition.duration / (COMPOSITION_BARS * 4);
 
   // Supporting melodic parts are composed from actual rests in the lead.
   // The conductor will later choose only a few of these candidates to perform.
@@ -144,7 +144,7 @@ export function resolveInstrumentEvents(composition: Composition, instruments: I
   // If arrangement is disabled, derive deterministic support notes from the
   // mathematical lead. Never substitute random pitches.
   if (instruments.cinematicBass && !hasBass) {
-    for (let bar = 0; bar < 8; bar++) {
+    for (let bar = 0; bar < COMPOSITION_BARS; bar++) {
       const time = bar * beat * 4;
       const source = lead.reduce((best, event) =>
         Math.abs(event.time - time) < Math.abs(best.time - time) ? event : best, lead[0]);
@@ -213,7 +213,7 @@ export function getConductorSection(progress: number): ConductorSection {
 }
 
 function eventBar(event: NoteEvent, barDuration: number): number {
-  return Math.max(0, Math.min(7, Math.floor(event.time / barDuration)));
+  return Math.max(0, Math.min(COMPOSITION_BARS - 1, Math.floor(event.time / barDuration)));
 }
 
 function eventFitsLeadGap(event: NoteEvent, lead: NoteEvent[], duration: number, beat: number): boolean {
@@ -315,16 +315,18 @@ function scoreConductorRoles(
   const longGap = conductorClamp(analysis.longestGapBeats / 1.5);
   const recovering = conductorClamp(-analysis.densityChange / 0.75);
   const building = conductorClamp(analysis.densityChange / 0.75);
-  const structuralPhrase = analysis.phraseIndex === 0 || analysis.phraseIndex === 3 ? 1 : 0;
-  const middlePhrase = analysis.phraseIndex === 1 || analysis.phraseIndex === 2 ? 1 : 0;
+  const structuralPhrase = analysis.phraseIndex % 2 === 0 ? 1 : 0;
+  const middlePhrase = analysis.phraseIndex % 2 === 1 ? 1 : 0;
 
   const scores: Array<{ role: ConductorRole; score: number; threshold: number }> = [];
   const add = (role: ConductorRole, rawScore: number, threshold: number) => {
     if (!instrumentAvailable(role, instruments)) return;
-    const repeatPenalty = previousRoles.includes(role)
-      ? (role === "bass" || role === "percussion" ? 0.04 : 0.12)
+    // Preserve continuity where the musical context still supports a role;
+    // strong changes in density and available space can still replace it.
+    const continuityBonus = previousRoles.includes(role)
+      ? (role === "bass" || role === "percussion" ? 0.05 : 0.08)
       : 0;
-    const score = rawScore - repeatPenalty;
+    const score = rawScore + continuityBonus;
     if (score >= threshold) scores.push({ role, score, threshold });
   };
 
@@ -405,18 +407,20 @@ function selectConductorPhraseEvents(
   for (const role of roles) {
     const candidates = events.filter(event => event.voice === role).sort((a, b) => a.time - b.time);
     if (role === "bass") {
-      const anchors = candidates.filter(event => {
-        const offset = (event.time - start) % barDuration;
-        return Math.min(Math.abs(offset), Math.abs(barDuration - offset)) <= beat * 0.12;
-      });
-      const anchorLimit = analysis.density > 1.3 ? 1 : 2;
-      anchors.slice(0, anchorLimit).forEach(add);
-      if (!anchors.length) add(candidates[0]);
       const cadenceApproach = candidates.find(event =>
         event.duration < beat * 0.7 &&
         event.time >= end - beat * 0.8 &&
         !selected.includes(event)
       );
+      const anchors = candidates.filter(event => {
+        const offset = (event.time - start) % barDuration;
+        return Math.min(Math.abs(offset), Math.abs(barDuration - offset)) <= beat * 0.12;
+      });
+      const anchorLimit = cadenceApproach && analysis.gapRatio > 0.2
+        ? 1
+        : analysis.density > 1.3 ? 1 : 2;
+      anchors.slice(0, anchorLimit).forEach(add);
+      if (!anchors.length) add(candidates[0]);
       if (cadenceApproach && selected.filter(event => event.voice === "bass").length < 2 &&
           analysis.gapRatio > 0.2) add(cadenceApproach);
     } else if (role === "pad") {
@@ -520,7 +524,7 @@ function conductPhrase(
     : "Piano alone · leave musical space";
   const decision: ConductorPhraseDecision = {
     phraseIndex: analysis.phraseIndex,
-    section: getConductorSection((analysis.phraseIndex + 0.5) / 4),
+    section: getConductorSection((analysis.phraseIndex + 0.5) / (COMPOSITION_BARS / 2)),
     analysis,
     roles,
     summary
@@ -556,8 +560,8 @@ export class AdaptiveConductorSession {
     private readonly enabled = true
   ) {
     this.duration = Math.max(0, duration);
-    this.beat = this.duration / 32;
-    this.phraseCount = this.duration > 0 ? 4 : 0;
+    this.beat = this.duration / (COMPOSITION_BARS * 4);
+    this.phraseCount = this.duration > 0 ? COMPOSITION_BARS / 2 : 0;
     this.phraseDuration = this.phraseCount ? this.duration / this.phraseCount : 0;
     this.phrases = Array.from({ length: this.phraseCount }, () => []);
     this.decisions = Array.from({ length: this.phraseCount }, () => null);
@@ -595,7 +599,7 @@ export class AdaptiveConductorSession {
       } else {
         this.decisions[phraseIndex] = {
           phraseIndex,
-          section: getConductorSection((phraseIndex + 0.5) / 4),
+          section: getConductorSection((phraseIndex + 0.5) / this.phraseCount),
           analysis,
           roles: [],
           summary: "Conductor bypassed"
@@ -969,7 +973,7 @@ export class MusicPlayer {
   }
   getCurrentConductorDecision(): ConductorPhraseDecision | null {
     if (!this.composition || this.composition.label === "shepard") return null;
-    const phraseIndex = Math.min(3, Math.floor(this.getProgress() * 4));
+    const phraseIndex = Math.min(COMPOSITION_BARS / 2 - 1, Math.floor(this.getProgress() * (COMPOSITION_BARS / 2)));
     return this.conductorSession?.getDecision(phraseIndex) ?? null;
   }
   getProgress(): number {
