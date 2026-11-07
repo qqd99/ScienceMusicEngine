@@ -1,5 +1,5 @@
 import { generateComposition, type Mode } from "./math";
-import { DEFAULT_INSTRUMENTS, DEFAULT_INSTRUMENT_LEVELS, DEFAULT_SOUND_PROFILE, MusicPlayer, renderCompositionWav, type InstrumentSettings, type InstrumentLevels, type SoundProfile } from "./audio";
+import { DEFAULT_INSTRUMENTS, DEFAULT_INSTRUMENT_LEVELS, DEFAULT_SOUND_PROFILE, MusicPlayer, renderCompositionWav, getConductorSection, type InstrumentSettings, type InstrumentLevels, type SoundProfile } from "./audio";
 import "./style.css";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -12,6 +12,7 @@ let currentSeed = 0.314159;
 let richInstrumentsEnabled = true;
 let musicalArrangementEnabled = true;
 let musicalExpressionEnabled = true;
+let ensembleConductorEnabled = true;
 let masterVolume = 1.15;
 const instrumentSettings: InstrumentSettings = { ...DEFAULT_INSTRUMENTS };
 const instrumentLevels: InstrumentLevels = { ...DEFAULT_INSTRUMENT_LEVELS };
@@ -43,7 +44,7 @@ app.innerHTML = `
           <label>Complexity <output id="complexity-value">55%</output><input id="complexity" type="range" min="10" max="100" value="55"/></label>
           <label>Root note<select id="root"><option value="60">C</option><option value="62">D</option><option value="64">E</option><option value="65">F</option><option value="67">G</option><option value="69">A</option><option value="71">B</option></select></label>
           <label>Harmonic color<select id="scale"><option>Lydian</option><option>Major</option><option>Minor</option><option>Pentatonic</option></select></label>
-        </div><div class="sound-profile"><label for="sound-profile">SOUND CHARACTER</label><select id="sound-profile"><option value="hybrid-cinematic" selected>Hybrid Cinematic</option><option value="natural">Natural / Organic</option><option value="electronic">Electronic / Synth</option></select><p class="instrument-note">Changes the synthesis character of all five instruments without changing the mathematical notes.</p></div><div class="feature-controls"><div class="feature-heading">04 / SOUND FEATURES</div><div class="feature-buttons"><button id="toggle-rich" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>RICH INSTRUMENTS</b><small>Overtones · brighter timbre</small></span><strong>ON</strong></button><button id="toggle-arrangement" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>MUSICAL ARRANGEMENT</b><small>Bass · chords · drums · phrase accents</small></span><strong>ON</strong></button><button id="toggle-expression" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>MUSICAL EXPRESSION</b><small>8-bar form · motif · climax · cadence</small></span><strong>ON</strong></button><button id="instrument-piano" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>PIANO</b><small>Lead melody · harmonic piano tone</small></span><strong>ON</strong></button><button id="instrument-analog" class="feature-toggle" type="button" aria-pressed="false"><span class="toggle-indicator"></span><span><b>WARM ANALOG</b><small>Counterline · warm sustained color</small></span><strong>OFF</strong></button><button id="instrument-plucked" class="feature-toggle" type="button" aria-pressed="false"><span class="toggle-indicator"></span><span><b>PLUCKED STRINGS</b><small>Call-and-response · plucked accents</small></span><strong>OFF</strong></button><button id="instrument-cinematicBass" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>CINEMATIC BASS</b><small>Harmonic roots · cinematic foundation</small></span><strong>ON</strong></button><button id="instrument-atmosphere" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>ATMOSPHERIC PADS</b><small>Sustained chords · evolving atmosphere</small></span><strong>ON</strong></button></div><div class="instrument-mixer"><div class="feature-heading">INSTRUMENT MIXER</div><div class="instrument-levels"><label for="level-piano">PIANO <output id="level-piano-value">90%</output><input id="level-piano" data-instrument-level="piano" type="range" min="0" max="150" value="90"/></label><label for="level-analog">WARM ANALOG <output id="level-analog-value">72%</output><input id="level-analog" data-instrument-level="analog" type="range" min="0" max="150" value="72"/></label><label for="level-plucked">PLUCKED STRINGS <output id="level-plucked-value">82%</output><input id="level-plucked" data-instrument-level="plucked" type="range" min="0" max="150" value="82"/></label><label for="level-cinematicBass">CINEMATIC BASS <output id="level-cinematicBass-value">90%</output><input id="level-cinematicBass" data-instrument-level="cinematicBass" type="range" min="0" max="150" value="90"/></label><label for="level-atmosphere">ATMOSPHERIC PADS <output id="level-atmosphere-value">72%</output><input id="level-atmosphere" data-instrument-level="atmosphere" type="range" min="0" max="150" value="72"/></label></div></div><p class="instrument-note">Piano leads the melody; plucked strings answer between phrases; warm analog adds a quiet counterline; bass anchors harmonic roots; pads sustain the chord atmosphere. Each part is generated deterministically from the same mathematical material.</p></div><div class="seed-row"><span>DETERMINISTIC SEED</span><code id="seed-value">0.314159</code><button id="random-seed" class="text-button">↻ NEW SEED</button></div></div>
+        </div><div class="sound-profile"><label for="sound-profile">SOUND CHARACTER</label><select id="sound-profile"><option value="hybrid-cinematic" selected>Hybrid Cinematic</option><option value="natural">Natural / Organic</option><option value="electronic">Electronic / Synth</option></select><p class="instrument-note">Changes the synthesis character of all five instruments without changing the mathematical notes.</p></div><div class="feature-controls"><div class="feature-heading">04 / SOUND FEATURES</div><div class="feature-buttons"><button id="toggle-rich" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>RICH INSTRUMENTS</b><small>Overtones · brighter timbre</small></span><strong>ON</strong></button><button id="toggle-arrangement" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>MUSICAL ARRANGEMENT</b><small>Bass · chords · drums · phrase accents</small></span><strong>ON</strong></button><button id="toggle-expression" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>MUSICAL EXPRESSION</b><small>8-bar form · motif · climax · cadence</small></span><strong>ON</strong></button><button id="toggle-conductor" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>ENSEMBLE CONDUCTOR</b><small>Staged entrances · build · release</small></span><strong>ON</strong></button><button id="instrument-piano" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>PIANO</b><small>Lead melody · harmonic piano tone</small></span><strong>ON</strong></button><button id="instrument-analog" class="feature-toggle" type="button" aria-pressed="false"><span class="toggle-indicator"></span><span><b>WARM ANALOG</b><small>Counterline · warm sustained color</small></span><strong>OFF</strong></button><button id="instrument-plucked" class="feature-toggle" type="button" aria-pressed="false"><span class="toggle-indicator"></span><span><b>PLUCKED STRINGS</b><small>Call-and-response · plucked accents</small></span><strong>OFF</strong></button><button id="instrument-cinematicBass" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>CINEMATIC BASS</b><small>Harmonic roots · cinematic foundation</small></span><strong>ON</strong></button><button id="instrument-atmosphere" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>ATMOSPHERIC PADS</b><small>Sustained chords · evolving atmosphere</small></span><strong>ON</strong></button></div><div class="conductor-readout"><span>ENSEMBLE PHASE</span><strong id="conductor-phase">READY</strong><small>Piano opens · strings enter · full ensemble peaks · layers release</small></div><div class="instrument-mixer"><div class="feature-heading">INSTRUMENT MIXER</div><div class="instrument-levels"><label for="level-piano">PIANO <output id="level-piano-value">90%</output><input id="level-piano" data-instrument-level="piano" type="range" min="0" max="150" value="90"/></label><label for="level-analog">WARM ANALOG <output id="level-analog-value">72%</output><input id="level-analog" data-instrument-level="analog" type="range" min="0" max="150" value="72"/></label><label for="level-plucked">PLUCKED STRINGS <output id="level-plucked-value">82%</output><input id="level-plucked" data-instrument-level="plucked" type="range" min="0" max="150" value="82"/></label><label for="level-cinematicBass">CINEMATIC BASS <output id="level-cinematicBass-value">90%</output><input id="level-cinematicBass" data-instrument-level="cinematicBass" type="range" min="0" max="150" value="90"/></label><label for="level-atmosphere">ATMOSPHERIC PADS <output id="level-atmosphere-value">72%</output><input id="level-atmosphere" data-instrument-level="atmosphere" type="range" min="0" max="150" value="72"/></label></div></div><p class="instrument-note">Piano leads the melody; plucked strings answer between phrases; warm analog adds a quiet counterline; bass anchors harmonic roots; pads sustain the chord atmosphere. Each part is generated deterministically from the same mathematical material.</p></div><div class="seed-row"><span>DETERMINISTIC SEED</span><code id="seed-value">0.314159</code><button id="random-seed" class="text-button">↻ NEW SEED</button></div></div>
         <div class="volume-control"><label for="master-volume"><span>OUTPUT VOLUME</span><output id="volume-value">115%</output></label><input id="master-volume" type="range" min="0" max="150" value="115" step="1" aria-label="Master music volume"/></div><div class="transport"><div class="transport-left"><button id="play" class="play-button"><span>▶</span> PLAY EXPERIMENT</button><button id="export-wav" class="export-button">↓ EXPORT WAV</button></div><div class="transport-status"><span class="status-light" id="status-light"></span><span id="status">READY TO GENERATE</span></div></div>
       </section>
     </section>
@@ -99,11 +100,12 @@ function drawPlayhead(progress: number) {
 function animatePlayhead() {
   if (!player.isPlaying) { cancelAnimationFrame(animationFrame); animationFrame=0; return; }
   render();
+  $("#conductor-phase").textContent = ensembleConductorEnabled ? getConductorSection(player.getProgress()).toUpperCase() : "BYPASSED";
   animationFrame=requestAnimationFrame(animatePlayhead);
 }
 function updateLiveComposition() {
   const comp=generateComposition(mode,options());
-  if (player.isPlaying) player.update(comp, masterVolume, instrumentSettings, soundProfile, instrumentLevels);
+  if (player.isPlaying) player.update(comp, masterVolume, instrumentSettings, soundProfile, instrumentLevels, ensembleConductorEnabled);
 }
 function setMode(next: Mode) {
   mode = next;
@@ -132,6 +134,12 @@ $("#toggle-rich").addEventListener("click", () => {
     updateLiveComposition();
   });
 });
+$("#toggle-conductor").addEventListener("click", () => {
+  ensembleConductorEnabled = !ensembleConductorEnabled;
+  setFeatureButton("toggle-conductor", ensembleConductorEnabled);
+  $("#conductor-phase").textContent = ensembleConductorEnabled ? (player.isPlaying ? getConductorSection(player.getProgress()).toUpperCase() : "READY") : "BYPASSED";
+  updateLiveComposition();
+});
 $("#toggle-expression").addEventListener("click", () => {
   musicalExpressionEnabled = !musicalExpressionEnabled;
   setFeatureButton("toggle-expression", musicalExpressionEnabled);
@@ -158,11 +166,11 @@ $("#play").addEventListener("click",async()=>{
   if(player.isPlaying){
     player.stop();playing=false;cancelAnimationFrame(animationFrame);animationFrame=0;
     button.innerHTML="<span>▶</span> PLAY EXPERIMENT";button.classList.remove("is-playing");button.setAttribute("aria-pressed","false");
-    $("#status").textContent="STOPPED";$("#status-light").classList.remove("on");
+    $("#status").textContent="STOPPED";$("#status-light").classList.remove("on");$("#conductor-phase").textContent=ensembleConductorEnabled?"READY":"BYPASSED";
     return;
   }
   try {
-    await player.play(generateComposition(mode,options()), masterVolume, instrumentSettings, soundProfile, instrumentLevels);playing=true;
+    await player.play(generateComposition(mode,options()), masterVolume, instrumentSettings, soundProfile, instrumentLevels, ensembleConductorEnabled);playing=true;
     button.innerHTML="<span>■</span> STOP EXPERIMENT";button.classList.add("is-playing");button.setAttribute("aria-pressed","true");
     $("#status").textContent="PLAYING · LIVE 8-BAR SEQUENCE";$("#status-light").classList.add("on");
     animatePlayhead();
@@ -174,7 +182,7 @@ $("#export-wav").addEventListener("click", async () => {
   button.textContent = "RENDERING WAV…";
   try {
     const composition = generateComposition(mode, options());
-    const wav = await renderCompositionWav(composition, masterVolume, instrumentSettings, soundProfile, instrumentLevels);
+    const wav = await renderCompositionWav(composition, masterVolume, instrumentSettings, soundProfile, instrumentLevels, ensembleConductorEnabled);
     const url = URL.createObjectURL(wav);
     const link = document.createElement("a");
     link.href = url;
