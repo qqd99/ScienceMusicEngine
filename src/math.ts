@@ -135,7 +135,7 @@ export function generateComposition(mode: Mode, options: {
   // Musical expression is a composed eight-bar form, not extra random fills.
   // The source data supplies the motif pitches; the arrangement develops that
   // motif through repetition, variation, a denser climax and a resolved ending.
-  if (musicalExpression) {
+  if (musicalExpression && mode !== "shepard") {
     const scaleNotes = SCALES[scale] ?? SCALES.Lydian;
     const source = values.length ? values : Array.from({length: steps}, (_, i) => i / steps);
     const degreeAt = (step: number) => {
