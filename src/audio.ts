@@ -321,7 +321,9 @@ function scoreConductorRoles(
   const scores: Array<{ role: ConductorRole; score: number; threshold: number }> = [];
   const add = (role: ConductorRole, rawScore: number, threshold: number) => {
     if (!instrumentAvailable(role, instruments)) return;
-    const repeatPenalty = previousRoles.includes(role) ? (role === "bass" ? 0.04 : 0.12) : 0;
+    const repeatPenalty = previousRoles.includes(role)
+      ? (role === "bass" || role === "percussion" ? 0.04 : 0.12)
+      : 0;
     const score = rawScore - repeatPenalty;
     if (score >= threshold) scores.push({ role, score, threshold });
   };
