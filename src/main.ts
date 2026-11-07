@@ -6,6 +6,8 @@ const app = document.querySelector<HTMLDivElement>("#app")!;
 const player = new MusicPlayer();
 let mode: Mode = "mandelbrot";
 let playing = false;
+let visualValues: number[] = [];
+let animationFrame = 0;
 let currentSeed = 0.314159;
 const names: Record<Mode, string> = {
   mandelbrot: "Mandelbrot explorer", euclidean: "Euclidean rhythms", chaos: "Chaos theory", shepard: "Shepard illusion"
@@ -52,6 +54,7 @@ function render() {
   ctx.strokeStyle = "rgba(143,170,190,.12)"; ctx.lineWidth = 1;
   for (let y = 35; y < h; y += 42) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
   const values = comp.values;
+  visualValues = values;
   if (mode === "euclidean") {
     const cx = w/2, cy = h/2, radius = 90;
     ctx.strokeStyle = "rgba(128,190,177,.28)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx,cy,radius,0,Math.PI*2); ctx.stroke();
@@ -65,24 +68,62 @@ function render() {
   }
   $("#visual-meta").textContent = `${values.length} STEPS · 8 BARS`;
   $("#value-readout").textContent = `MIN ${Math.min(...values).toFixed(3)}  /  MAX ${Math.max(...values).toFixed(3)}`;
+  if (player.isPlaying) drawPlayhead(player.getProgress());
+}
+function drawPlayhead(progress: number) {
+  if (!visualValues.length) return;
+  const w = canvas.width, h = canvas.height;
+  if (mode === "euclidean") {
+    const cx = w/2, cy = h/2, radius = 90, angle = progress * Math.PI * 2 - Math.PI/2;
+    const x = cx + Math.cos(angle) * (radius + 20), y = cy + Math.sin(angle) * (radius + 20);
+    ctx.beginPath(); ctx.arc(x,y,10,0,Math.PI*2); ctx.fillStyle="rgba(131,197,178,.18)"; ctx.fill();
+    ctx.beginPath(); ctx.arc(x,y,5,0,Math.PI*2); ctx.fillStyle="#f4d58a"; ctx.fill();
+    ctx.strokeStyle="#fff0c2"; ctx.lineWidth=1.5; ctx.stroke();
+    return;
+  }
+  const position = progress * (visualValues.length - 1);
+  const index = Math.floor(position), fraction = position - index;
+  const value = visualValues[index] + ((visualValues[Math.min(index+1,visualValues.length-1)] - visualValues[index]) * fraction);
+  const x = progress * w, y = h - 30 - value * (h - 65);
+  ctx.beginPath(); ctx.arc(x,y,12,0,Math.PI*2); ctx.fillStyle="rgba(244,213,138,.18)"; ctx.fill();
+  ctx.beginPath(); ctx.arc(x,y,5,0,Math.PI*2); ctx.fillStyle="#f4d58a"; ctx.fill();
+  ctx.strokeStyle="#fff0c2"; ctx.lineWidth=1.5; ctx.stroke();
+}
+function animatePlayhead() {
+  if (!player.isPlaying) { cancelAnimationFrame(animationFrame); animationFrame=0; return; }
+  drawPlayhead(player.getProgress());
+  animationFrame=requestAnimationFrame(animatePlayhead);
+}
+function updateLiveComposition() {
+  const comp=generateComposition(mode,options());
+  if (player.isPlaying) player.update(comp);
 }
 function setMode(next: Mode) {
   mode = next;
   app.querySelectorAll<HTMLButtonElement>(".mode").forEach(b=>b.classList.toggle("active",b.dataset.mode===mode));
-  $("#mode-title").textContent=names[mode];$("#mode-description").textContent=descriptions[mode];render();
+  $("#mode-title").textContent=names[mode];$("#mode-description").textContent=descriptions[mode];render();updateLiveComposition();
 }
 app.querySelectorAll<HTMLButtonElement>(".mode").forEach(b=>b.addEventListener("click",()=>setMode(b.dataset.mode as Mode)));
 ["bpm","complexity","root","scale"].forEach(id=>$(`#${id}`).addEventListener("input",()=>{
   if(id==="bpm")$("#bpm-value").textContent=( $("#bpm") as HTMLInputElement).value+" BPM";
   if(id==="complexity")$("#complexity-value").textContent=( $("#complexity") as HTMLInputElement).value+"%";
-  render();
+  render();updateLiveComposition();
 }));
-$("#random-seed").addEventListener("click",()=>{currentSeed=Number(Math.random().toFixed(6));$("#seed-value").textContent=currentSeed.toFixed(6);render();});
+$("#random-seed").addEventListener("click",()=>{currentSeed=Number(Math.random().toFixed(6));$("#seed-value").textContent=currentSeed.toFixed(6);render();updateLiveComposition();});
 $("#play").addEventListener("click",async()=>{
-  const comp=generateComposition(mode,options());
-  try { await player.play(comp); playing=true; $("#status").textContent="PLAYING · LOOPING 8-BAR SEQUENCE";$("#status-light").classList.add("on");($("#play") as HTMLButtonElement).disabled=true;($("#stop") as HTMLButtonElement).disabled=false; }
-  catch(error){$("#status").textContent="AUDIO COULD NOT START";console.error(error);}
+  const button=$("#play") as HTMLButtonElement;
+  if(player.isPlaying){
+    player.stop();playing=false;cancelAnimationFrame(animationFrame);animationFrame=0;
+    button.innerHTML="<span>▶</span> PLAY EXPERIMENT";button.classList.remove("is-playing");
+    $("#status").textContent="STOPPED";$("#status-light").classList.remove("on");
+    return;
+  }
+  try {
+    await player.play(generateComposition(mode,options()));playing=true;
+    button.innerHTML="<span>■</span> STOP EXPERIMENT";button.classList.add("is-playing");
+    $("#status").textContent="PLAYING · LIVE 8-BAR SEQUENCE";$("#status-light").classList.add("on");
+    animatePlayhead();
+  } catch(error){$("#status").textContent="AUDIO COULD NOT START";console.error(error);}
 });
-$("#stop").addEventListener("click",()=>{player.stop();playing=false;$("#status").textContent="STOPPED";$("#status-light").classList.remove("on");($("#play") as HTMLButtonElement).disabled=false;($("#stop") as HTMLButtonElement).disabled=true;});
 window.addEventListener("beforeunload",()=>player.stop());
 render();
