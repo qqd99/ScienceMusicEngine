@@ -203,26 +203,48 @@ export function generateComposition(mode: Mode, options: {
   // Optional harmonic foundation: four two-bar chords and bass pulses.
   if (musicalArrangement) {
   const scaleNotes = SCALES[scale] ?? SCALES.Lydian;
-  const progression = scale === "Minor" ? [0, 5, 2, musicalExpression ? 0 : 6] : [0, 4, 5, musicalExpression ? 0 : 3];
+  const progression = scale === "Minor" ? [0, 5, 3, 0] : [0, 3, 4, 0];
   const accompanimentArc = [0.38, 0.48, 0.62, 0.74, 1.0, 0.94, 0.55, 0.28];
   const chordRoots: number[] = [];
+  let previousVoicing = [root + 12, root + 16, root + 19];
   for (let section = 0; section < 4; section++) {
     // The average mathematical output gently selects nearby harmonic colors;
     // the functional progression keeps the result musically grounded.
     const sectionValues = values.slice(section * 16, (section + 1) * 16);
     const mean = sectionValues.length ? sectionValues.reduce((sum, value) => sum + value, 0) / sectionValues.length : 0.5;
-    const dataNudge = Math.round((mean - 0.5) * 2);
-    const degree = (progression[section] + (section === 0 || section === 3 ? 0 : dataNudge + scaleNotes.length)) % scaleNotes.length;
+    const degree = progression[section];
     const chordRoot = root + scaleNotes[degree % scaleNotes.length];
     chordRoots.push(chordRoot);
-    const thirdIndex = degree + 2;
-    const fifthIndex = degree + 4;
-    const chordThird = root + scaleNotes[thirdIndex % scaleNotes.length] + (thirdIndex >= scaleNotes.length ? 12 : 0);
-    const chordFifth = root + scaleNotes[fifthIndex % scaleNotes.length] + (fifthIndex >= scaleNotes.length ? 12 : 0);
+    const triad = [0, 2, 4].map(offset => {
+      const index = degree + offset;
+      return root + 12 + scaleNotes[index % scaleNotes.length] + (index >= scaleNotes.length ? 12 : 0);
+    });
+    const previous = section === 0 ? [root + 12, root + 16, root + 19] : previousVoicing;
+    const candidates = [0, 1, 2].map(inversion => {
+      const rotated = [...triad.slice(inversion), ...triad.slice(0, inversion).map(note => note + 12)];
+      return rotated.map((note, voice) => {
+        const target = previous[voice];
+        return [note - 12, note, note + 12, note + 24]
+          .sort((a, b) => Math.abs(a - target) - Math.abs(b - target))[0];
+      });
+    });
+    const voicing = candidates.sort((a, b) =>
+      a.reduce((sum, note, i) => sum + Math.abs(note - previous[i]), 0) -
+      b.reduce((sum, note, i) => sum + Math.abs(note - previous[i]), 0)
+    )[0];
+    previousVoicing = voicing;
+    const seventhIndex = degree + 6;
+    const seventh = root + 12 + scaleNotes[seventhIndex % scaleNotes.length] +
+      (seventhIndex >= scaleNotes.length ? 12 : 0);
     const chordTime = section * 2 * 4 * beat;
-    for (const [tone, pan] of [[chordRoot + 12, -0.32], [chordThird + 12, 0], [chordFifth + 12, 0.32]] as const) {
-      events.push({ time: chordTime, duration: 7.7 * beat, frequency: midiHz(tone), velocity: 0.075 * (musicalExpression ? (section === 0 ? 0.52 : section === 1 ? 0.72 : section === 2 ? 1 : 0.42) : 1), waveform: "triangle", pan, voice: "pad" });
+    for (let voice = 0; voice < 3; voice++) {
+      const tone = voicing[voice];
+      const pan = (voice - 1) * 0.3;
+      const sectionLevel = musicalExpression ? [0.52, 0.72, 1, 0.42][section] : 1;
+      events.push({ time: chordTime, duration: 7.7 * beat, frequency: midiHz(tone), velocity: 0.085 * sectionLevel, waveform: "triangle", pan, voice: "pad" });
     }
+    // A soft diatonic seventh adds color without muddying the triad.
+    events.push({ time: chordTime, duration: 7.7 * beat, frequency: midiHz(seventh), velocity: 0.026 * (0.7 + mean * 0.5), waveform: "sine", pan: 0.12, voice: "pad" });
     for (let bar = 0; bar < 2; bar++) {
       const absoluteBar = section * 2 + bar;
       const bassTime = chordTime + bar * 4 * beat;
