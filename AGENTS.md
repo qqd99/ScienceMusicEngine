@@ -123,12 +123,13 @@ The selective orchestration revision should follow these rules:
 
 **Next action after the revision:** ask the user to audition the new conductor with all five instruments enabled and compare ON/OFF using the same mode and seed. Listen for whether the parts take turns, respect the melody's rests, and create a clear but uncluttered climax. Do not claim perceptual success based on tests alone. Ask for feedback before adding unrelated features.
 
-### Last verified selective-orchestration implementation
+### Last verified selective-orchestration revision
 
-- Implementation commit: `6742bf8a5a3035e070ed034f4796c095f61ed0d5` — “Replace conductor volume ramps with selective rhythm-aware orchestration”.
-- GitHub Actions run **#102** completed successfully, including `npm install`, `npm test`, `npm run build`, Pages artifact upload and deployment.
-- The suite at that implementation commit contained **37 test cases** (17 audio tests and 20 math tests).
-- A follow-up hardening change is being made for order-independent bass/percussion coordination and explicit Shepard-layer isolation. Always inspect the current branch head and exact Actions run before relying on these figures.
+- Main orchestration commit: `6742bf8a5a3035e070ed034f4796c095f61ed0d5` — “Replace conductor volume ramps with selective rhythm-aware orchestration”.
+- Follow-up hardening commit: `fe8536a776f8342248a4dff79097e393bac7af0f` — order-independent bass/percussion coordination and explicit Shepard-layer isolation.
+- GitHub Actions run **#103** completed successfully for the hardening commit, including `npm install`, `npm test`, `npm run build`, Pages artifact upload and deployment.
+- The verified suite contains **38 test cases** (18 audio tests and 20 math tests).
+- This handoff update is documentation-only and follows that verified code revision. Always inspect the current branch head and exact Actions run before relying on these figures.
 
 ## 7. Documentation note
 
