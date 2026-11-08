@@ -468,7 +468,7 @@ export function generateComposition(mode: Mode, options: {
     }
   }
 
-  const harmony: HarmonicFrame[] = mode === "shepard" ? [] : chordProgression.map((degree, section) => {
+  const harmony: HarmonicFrame[] = chordProgression.map((degree, section) => {
     const profile = analyzeSequenceSection(values, section);
     const tension = calculateSectionTension(profile, section);
     const colorOffset = section === 0 ? 1
@@ -522,7 +522,7 @@ export function generateComposition(mode: Mode, options: {
 
   // Optional harmonic foundation: eight two-bar chords, voice-led bass motion,
   // overlapping pad releases and anticipations into every new harmony.
-  if (musicalArrangement && mode !== "shepard") {
+  if (musicalArrangement) {
     const accompanimentArc = [
       0.34, 0.4, 0.46, 0.52,
       0.58, 0.64, 0.7, 0.76,
