@@ -75,6 +75,27 @@ describe("procedural instrument controls", () => {
     expect(first.some(event => event.voice === "pad")).toBe(true);
   });
 
+  it("makes plucked responses land on chord tones from the active pad voicing", () => {
+    const composition = generateComposition("mandelbrot", {
+      seed: 0.314159, musicalArrangement: true, musicalExpression: true
+    });
+    const pads = composition.events.filter(event => event.voice === "pad");
+    const resolved = resolveInstrumentEvents(composition, {
+      piano: true, analog: false, plucked: true, cinematicBass: true, atmosphere: true
+    });
+    const answers = resolved.filter(event => event.voice === "answer");
+    const pitchClass = (frequency: number) =>
+      Math.round(69 + 12 * Math.log2(frequency / 440)) % 12;
+    expect(answers.length).toBeGreaterThan(0);
+    for (const answer of answers) {
+      const activePads = pads.filter(pad =>
+        pad.time <= answer.time && pad.time + pad.duration >= answer.time
+      );
+      if (activePads.length) {
+        expect(activePads.some(pad => pitchClass(pad.frequency) === pitchClass(answer.frequency))).toBe(true);
+      }
+    }
+  });
   it("does not create string answers or analog counterlines when those instruments are off", () => {
     const composition = generateComposition("chaos", { seed: 0.271828 });
     const events = resolveInstrumentEvents(composition, {

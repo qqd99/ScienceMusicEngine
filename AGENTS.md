@@ -42,7 +42,7 @@ The browser UI includes mathematical visualization, a moving playhead, tempo, co
 ### Musical form and sound system already implemented
 
 - The ordinary musical experiments use a **16-bar composition** with four connected four-bar movements: opening, development, climax, and reprise/cadence. At the default 128 BPM, the piece lasts about 30 seconds. The mathematical sequence shapes the opening motif, eight two-bar chord choices, development variations and climax contour; the reprise recalls the motif and resolves to the tonic.
-- The composition can include sequence-derived harmonic progressions, close-voiced chord inversions/voice leading, bass movement, and procedurally synthesized kick/snare/hi-hat percussion.
+- The composition can include sequence-derived harmonic progressions, close-voiced chord inversions/voice leading, tension-aware chord colors and tonic cadence, source-shaped bass/drum movement, and procedurally synthesized kick/snare/hi-hat percussion.
 - The five dedicated instrument layers are:
   - **Piano:** carries the lead melody.
   - **Plucked Strings:** deterministic call-and-response answers between selected lead phrases.
@@ -107,18 +107,22 @@ After editing:
 
 ## 6. Current handoff / resume point
 
-The user approved Phase 2: **Sequence-aware Musical Intelligence**. The implementation now makes mathematical source values shape the eight two-bar chord choices, phrase-level melodic transformations and climax contour.
+The user approved Phase 3: **Composer-Level Musical Intelligence** — make the engine sound like a composer interpreting mathematics rather than an algorithm assembling notes.
 
-- The 16-bar form remains four connected four-bar movements at a 30-second default (128 BPM).
-- The eight-chord journey is derived deterministically from each source's local mean, directional trend, movement and weighted position, plus a whole-sequence phase fingerprint. The fingerprint ensures cyclic Euclidean patterns can produce seed-sensitive harmony even when each two-bar window has the same pulse count.
-- The opening and final chord remain tonic; intermediate choices come from scale-specific diatonic palettes. The dominant approach is favored before the final tonic.
-- Development phrases use local source trend and motion to alter motif intervals. The climax contour responds to the source's average level and direction.
-- Chord inversions are selected with a voice-leading cost that penalizes large leaps and avoids crossed voicings.
-- Melodic pickups now target the next sequence-derived chord. Bass and pads use source-derived phrase character for subtle supporting-level changes.
-- Preserve the adaptive conductor exactly: at most two supporting roles per two-bar phrase, enabled instruments are only available, and roles adapt to density/rests/energy. Do not replace it with a fixed scheduler.
-- Preserve live/offline event parity, the +14 dB master chain, all independent instrument controls, and the Shepard illusion's special behavior.
+The Phase 3 implementation now:
+- Extracts a deterministic four-note identity from the opening mathematical contour; the overall source level sets its tonal anchor and local contour changes set its intervals.
+- Develops that identity through diatonic inversion, retrograde and sequence, then recalls the original motif in the reprise.
+- Shapes chord extensions and supporting energy with a structural tension curve modulated by source movement and directional change. The opening uses an open add-9 color; tension can introduce richer extensions; the final tonic replaces the leading-tone color with a stable octave tonic.
+- Builds the drum groove around a stable phrase pulse while using per-bar source values to select accents, hats and phrase-end fills. The final bar releases percussion for the cadence.
+- Makes plucked and analog responses choose from chord tones sounding at the response time instead of relying on fixed chromatic intervals.
 
-**Next action:** verify CI for the Phase 2 commit, then ask the user to compare the same mathematical mode with several seeds. Listen for distinct but coherent harmonic journeys, smoother chord changes, and a climax that reflects the source. Do not claim perceptual success from tests alone.
+Preserve:
+- Determinism for fixed mode, seed and controls; mathematics must remain the source of musical content.
+- The 16-bar/30-second four-movement form and the Shepard illusion's separate behavior.
+- Adaptive conductor behavior (at most two support roles per two-bar phrase), independent instrument toggles/mixer, live/offline event parity, and the +14 dB master chain.
+- All existing instrument routing and fallback behavior. No AI music generation or downloaded audio samples.
+
+**Next action:** verify the Phase 3 GitHub Actions run for the exact commit. Then ask the user to audition the same mode across several seeds, focusing on whether motif transformations are recognizable, tension builds and resolves, and ensemble answers fit the harmony. Tests establish deterministic structure, not perceptual quality.
 
 ### Current output-level revision
 

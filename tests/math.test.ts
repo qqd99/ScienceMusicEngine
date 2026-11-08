@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveHarmonicProgression, euclideanPattern, generateComposition, logisticSequence, mandelbrotEscape } from "../src/math";
+import { deriveHarmonicProgression, deriveMusicalMotif, euclideanPattern, generateComposition, logisticSequence, mandelbrotEscape, transformMusicalMotif } from "../src/math";
 describe("mathematical generators", () => {
   it("distributes exactly k Euclidean pulses", () => {
     expect(euclideanPattern(5, 13).filter(Boolean)).toHaveLength(5);
@@ -25,6 +25,27 @@ describe("mathematical generators", () => {
     const a = generateComposition("euclidean", { seed: 0.1 });
     const b = generateComposition("euclidean", { seed: 0.8 });
     expect(a.values).not.toEqual(b.values);
+  });
+  it("extracts deterministic, seed-sensitive motifs from mathematical contours", () => {
+    const seeds = [0.314159, 0.271828, 0.618034, 0.123456];
+    for (const mode of ["mandelbrot", "euclidean", "chaos"] as const) {
+      const motifs = seeds.map(seed => {
+        const composition = generateComposition(mode, { seed, scale: "Major" });
+        return deriveMusicalMotif(composition.values, "Major");
+      });
+      expect(new Set(motifs.map(motif => motif.join(","))).size).toBeGreaterThan(1);
+      for (const motif of motifs) {
+        expect(motif).toHaveLength(4);
+        expect(motif.every(degree => degree >= 0 && degree < 7)).toBe(true);
+      }
+    }
+  });
+  it("develops a motif through inversion, retrograde and diatonic sequence", () => {
+    expect(transformMusicalMotif([1, 3, 4, 6], 7)).toEqual({
+      inversion: [1, 6, 5, 3],
+      retrograde: [6, 4, 3, 1],
+      sequence: [3, 5, 6, 1]
+    });
   });
   it("derives seed-sensitive chord journeys from all three mathematical sources", () => {
     const seeds = [0.314159, 0.271828, 0.618034, 0.123456];
@@ -130,7 +151,9 @@ describe("mathematical generators", () => {
     const pads = composition.events.filter(event => event.voice === "pad");
     const first = pads.filter(event => event.time === 0).map(event => Math.round(69 + 12 * Math.log2(event.frequency / 440)) % 12).sort();
     const final = pads.filter(event => event.time === 28).map(event => Math.round(69 + 12 * Math.log2(event.frequency / 440)) % 12).sort();
-    expect(first).toEqual(final);
+    expect(first).toContain(2); // Opening add-9 color.
+    expect(final).toContain(0); // Final chord doubles the tonic, not the leading tone.
+    expect(final).not.toContain(11);
     expect(pads.filter(event => event.time === 0)).toHaveLength(4);
   });
   it("builds bass and pad energy toward the climax, then releases for the reprise", () => {
@@ -160,6 +183,17 @@ describe("mathematical generators", () => {
     for (const bar of [3, 7, 11]) {
       expect(inBar(bar).some(event => event.time >= bar * 2 + 1.5)).toBe(true);
     }
+  });
+  it("lets mathematical activity reshape drum accents while keeping a stable phrase pulse", () => {
+    const a = generateComposition("chaos", { seed: 0.314159 }).events
+      .filter(event => event.voice === "percussion");
+    const b = generateComposition("chaos", { seed: 0.618034 }).events
+      .filter(event => event.voice === "percussion");
+    expect(a.some(event => event.percussionKind === "kick" && event.time === 0)).toBe(true);
+    expect(a.map(event => [event.time, event.percussionKind]))
+      .not.toEqual(b.map(event => [event.time, event.percussionKind]));
+    expect(a).toEqual(generateComposition("chaos", { seed: 0.314159 }).events
+      .filter(event => event.voice === "percussion"));
   });
   it("omits the drum arrangement when musical expression is disabled", () => {
     const composition = generateComposition("chaos", { musicalExpression: false });

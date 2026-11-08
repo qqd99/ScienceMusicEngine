@@ -95,6 +95,64 @@ export function deriveHarmonicProgression(values: readonly number[], scale = "Ly
     return candidates[Math.floor(selector * candidates.length)];
   });
 }
+export function deriveMusicalMotif(values: readonly number[], scale = "Lydian"): number[] {
+  const scaleNotes = SCALES[scale] ?? SCALES.Lydian;
+  const source = values.length ? values.map(value => clamp(value, 0, 1)) : [0.5];
+  const mean = source.reduce((sum, value) => sum + value, 0) / source.length;
+  const opening = source.slice(0, Math.min(32, source.length));
+  const samples = [0, 1 / 3, 2 / 3, 1].map(position =>
+    opening[Math.round(position * (opening.length - 1))] ?? mean
+  );
+  const sampledDegrees = samples.map(value =>
+    Math.round(value * (scaleNotes.length - 1))
+  );
+  const wrap = (degree: number) => ((degree % scaleNotes.length) + scaleNotes.length) % scaleNotes.length;
+  const motif = [Math.floor(mean * scaleNotes.length) % scaleNotes.length];
+
+  for (let index = 1; index < 4; index++) {
+    let interval = clamp(sampledDegrees[index] - sampledDegrees[index - 1], -3, 3);
+    if (interval === 0) {
+      interval = clamp(
+        Math.round((samples[index] - samples[index - 1]) * (scaleNotes.length - 1) * 2),
+        -2, 2
+      );
+    }
+    motif.push(wrap(motif[index - 1] + interval));
+  }
+
+  // A perfectly level source still receives a stable, singable identity.
+  if (new Set(motif).size === 1) {
+    return [motif[0], wrap(motif[0] + 2), wrap(motif[0] + 4), wrap(motif[0] + 2)];
+  }
+  return motif;
+}
+
+export interface MotifTransformations {
+  inversion: number[];
+  retrograde: number[];
+  sequence: number[];
+}
+
+export function transformMusicalMotif(
+  motif: readonly number[],
+  scaleLength: number
+): MotifTransformations {
+  const length = Math.max(1, Math.floor(scaleLength));
+  const wrap = (degree: number) => ((degree % length) + length) % length;
+  const anchor = motif[0] ?? 0;
+  return {
+    inversion: motif.map(degree => wrap(2 * anchor - degree)),
+    retrograde: [...motif].reverse(),
+    sequence: motif.map(degree => wrap(degree + 2))
+  };
+}
+
+function calculateSectionTension(profile: SequenceSectionProfile, section: number): number {
+  const structuralArc = [0.12, 0.2, 0.32, 0.46, 0.62, 0.78, 0.96, 0.04];
+  const sourceEnergy = clamp(profile.movement * 1.6 + Math.abs(profile.trend) * 1.2, 0, 1);
+  return clamp((structuralArc[section] ?? 0.04) * 0.82 + sourceEnergy * 0.18, 0, 1);
+}
+
 export function euclideanPattern(pulses: number, steps: number, rotation = 0): boolean[] {
   const n = Math.max(1, Math.floor(steps));
   const k = clamp(Math.floor(pulses), 0, n);
@@ -205,12 +263,8 @@ export function generateComposition(mode: Mode, options: {
 
   if (musicalExpression && mode !== "shepard") {
     const source = values.length ? values : Array.from({ length: steps }, (_, i) => i / steps);
-    const degreeAt = (step: number) => {
-      const raw = source[step % source.length] ?? 0.5;
-      const shaped = clamp(raw * 0.68 + (step % 8) / 7 * 0.32, 0, 0.999);
-      return Math.floor(shaped * scaleNotes.length);
-    };
-    const motif = [0, 2, 4, 6].map(degreeAt);
+    const motif = deriveMusicalMotif(source, scale);
+    const motifTransforms = transformMusicalMotif(motif, scaleNotes.length);
     const sectionGain = [
       0.38, 0.42, 0.46, 0.5,
       0.56, 0.62, 0.68, 0.74,
@@ -252,10 +306,13 @@ export function generateComposition(mode: Mode, options: {
 
     // II. Development: fragment, vary and reassemble the motif.
     const development = [
-      { bar: 4, slots: [0, 2, 5, 7], degrees: [motif[0], motif[1] + 1, motif[2], motif[3]] },
-      { bar: 5, slots: [0, 1, 4, 6, 7], degrees: [motif[0], motif[1], motif[2] + 1, motif[3], motif[2]] },
-      { bar: 6, slots: [0, 2, 4, 6], degrees: [motif[1], motif[2], motif[3] + 1, motif[2]] },
-      { bar: 7, slots: [0, 2, 4], degrees: [motif[0], motif[2], motif[3]] }
+      // Statement fragment, then inversion, retrograde and a transposed sequence.
+      { bar: 4, slots: [0, 2, 5, 7], degrees: motif },
+      { bar: 5, slots: [0, 1, 4, 6, 7], degrees: [
+        ...motifTransforms.inversion, motifTransforms.inversion[2]
+      ] },
+      { bar: 6, slots: [0, 2, 4, 6], degrees: motifTransforms.retrograde },
+      { bar: 7, slots: [0, 2, 4], degrees: motifTransforms.sequence.slice(0, 3) }
     ];
     for (const phrase of development) {
       const profile = analyzeSequenceSection(source, Math.floor(phrase.bar / 2));
@@ -283,8 +340,10 @@ export function generateComposition(mode: Mode, options: {
     const climaxTurn = climaxTrend >= 0 ? 1 : -1;
     const climaxContour = [
       motif[0], motif[1], motif[2] + climaxLift, motif[3] + climaxLift,
-      motif[2] + climaxTurn, motif[3] + climaxTurn,
-      motif[1] + climaxLift, motif[3] + climaxLift + climaxTurn
+      motifTransforms.inversion[3] + climaxLift + climaxTurn,
+      motifTransforms.inversion[2] + climaxLift + climaxTurn,
+      motifTransforms.retrograde[1] + climaxLift,
+      motifTransforms.retrograde[0] + climaxLift + climaxTurn
     ];
     for (const bar of [8, 9, 10, 11]) {
       climaxContour.forEach((degree, i) => addLead(bar, i, degree + (bar === 9 || bar === 10 ? 1 : 0), {
@@ -334,6 +393,7 @@ export function generateComposition(mode: Mode, options: {
 
     for (let section = 0; section < 8; section++) {
       const profile = analyzeSequenceSection(values, section);
+      const tension = calculateSectionTension(profile, section);
       const degree = chordProgression[section];
       const chordRoot = root + scaleNotes[degree % scaleNotes.length];
       chordRoots.push(chordRoot);
@@ -359,12 +419,17 @@ export function generateComposition(mode: Mode, options: {
         voiceLeadingCost(a) - voiceLeadingCost(b)
       )[0];
       previousVoicing = voicing;
-      const seventhIndex = degree + 6;
-      const seventh = root + 12 + scaleNotes[seventhIndex % scaleNotes.length] +
-        (seventhIndex >= scaleNotes.length ? 12 : 0);
+      // Open on an add-9 color, increase extensions as tension rises, then
+      // replace the leading-tone color with an octave tonic at the final cadence.
+      const colorOffset = section === 0 ? 1
+        : section === 7 ? 0
+          : scaleNotes.length >= 7 && tension >= 0.55 ? 6 : 4;
+      const colorIndex = degree + colorOffset;
+      const colorTone = root + 12 + scaleNotes[colorIndex % scaleNotes.length] +
+        (colorIndex >= scaleNotes.length ? 12 : 0);
       const chordTime = section * 8 * beat;
       const chordDuration = (section === 7 ? 8 : 8.48) * beat;
-      const sequenceLevel = 0.84 + profile.mean * 0.2 + profile.movement * 0.12;
+      const sequenceLevel = 0.84 + profile.mean * 0.16 + profile.movement * 0.1 + tension * 0.08;
       const chordLevel = chordLevels[section] * sequenceLevel;
 
       for (let voice = 0; voice < 3; voice++) {
@@ -377,10 +442,10 @@ export function generateComposition(mode: Mode, options: {
           waveform: "triangle", pan, voice: "pad"
         });
       }
-      const seventhVelocity = 0.02 * (0.7 + profile.mean * 0.5) * chordLevel;
+      const colorVelocity = (0.012 + tension * 0.024) * chordLevel;
       events.push({
-        time: chordTime, duration: chordDuration, frequency: midiHz(seventh),
-        velocity: seventhVelocity, velocityEnd: section === 7 ? 0.001 : seventhVelocity * 0.3,
+        time: chordTime, duration: chordDuration, frequency: midiHz(colorTone),
+        velocity: colorVelocity, velocityEnd: section === 7 ? 0.001 : colorVelocity * 0.3,
         waveform: "sine", pan: 0.12, voice: "pad"
       });
 
@@ -390,11 +455,11 @@ export function generateComposition(mode: Mode, options: {
         const arc = musicalExpression ? accompanimentArc[absoluteBar] : 0.72;
         events.push({
           time: bassTime, duration: 1.55 * beat, frequency: midiHz(chordRoot - 12),
-          velocity: 0.22 * arc * (0.86 + profile.mean * 0.22 + profile.movement * 0.12), waveform: "triangle", pan: -0.08, voice: "bass"
+          velocity: 0.22 * arc * (0.86 + profile.mean * 0.18 + profile.movement * 0.1 + tension * 0.08), waveform: "triangle", pan: -0.08, voice: "bass"
         });
         events.push({
           time: bassTime + 2 * beat, duration: 1.05 * beat, frequency: midiHz(chordRoot - 5),
-          velocity: 0.13 * arc * (0.86 + profile.mean * 0.22 + profile.movement * 0.12), waveform: "triangle", pan: 0.08, voice: "bass"
+          velocity: 0.13 * arc * (0.86 + profile.mean * 0.18 + profile.movement * 0.1 + tension * 0.08), waveform: "triangle", pan: 0.08, voice: "bass"
         });
       }
     }
@@ -404,8 +469,9 @@ export function generateComposition(mode: Mode, options: {
       const bar = section * 2 - 1;
       const time = section * 8 * beat - 0.5 * beat;
       const profile = analyzeSequenceSection(values, section);
+      const tension = calculateSectionTension(profile, section);
       const arc = (musicalExpression ? accompanimentArc[bar] : 0.72) *
-        (0.86 + profile.mean * 0.22 + profile.movement * 0.12);
+        (0.86 + profile.mean * 0.18 + profile.movement * 0.1 + tension * 0.08);
       events.push({
         time, duration: 0.36 * beat, frequency: midiHz(chordRoots[section] - 13),
         velocity: 0.12 * arc, waveform: "triangle", pan: 0, voice: "bass"
@@ -413,26 +479,60 @@ export function generateComposition(mode: Mode, options: {
     }
 
     if (musicalExpression) {
-      const drumBars: Array<Array<{ slot: number; kind: "kick" | "snare" | "hat"; level: number }>> = [
-        [{ slot: 0, kind: "kick", level: 0.26 }],
-        [{ slot: 0, kind: "kick", level: 0.28 }],
-        [{ slot: 0, kind: "kick", level: 0.32 }, { slot: 4, kind: "snare", level: 0.16 }],
-        [{ slot: 0, kind: "kick", level: 0.38 }, { slot: 4, kind: "snare", level: 0.2 }, { slot: 6, kind: "hat", level: 0.1 }, { slot: 7, kind: "snare", level: 0.22 }],
-        [{ slot: 0, kind: "kick", level: 0.4 }],
-        [{ slot: 0, kind: "kick", level: 0.44 }, { slot: 4, kind: "snare", level: 0.22 }],
-        [{ slot: 0, kind: "kick", level: 0.48 }, { slot: 6, kind: "hat", level: 0.12 }],
-        [{ slot: 0, kind: "kick", level: 0.54 }, { slot: 4, kind: "snare", level: 0.28 }, { slot: 6, kind: "hat", level: 0.14 }, { slot: 7, kind: "snare", level: 0.25 }],
-        [{ slot: 0, kind: "kick", level: 0.7 }, { slot: 2, kind: "hat", level: 0.18 }, { slot: 4, kind: "snare", level: 0.42 }, { slot: 6, kind: "hat", level: 0.18 }],
-        [{ slot: 0, kind: "kick", level: 0.74 }, { slot: 2, kind: "hat", level: 0.18 }, { slot: 4, kind: "snare", level: 0.44 }, { slot: 6, kind: "hat", level: 0.18 }],
-        [{ slot: 0, kind: "kick", level: 0.78 }, { slot: 2, kind: "hat", level: 0.2 }, { slot: 3, kind: "kick", level: 0.3 }, { slot: 4, kind: "snare", level: 0.48 }, { slot: 6, kind: "hat", level: 0.2 }],
-        [{ slot: 0, kind: "kick", level: 0.74 }, { slot: 2, kind: "hat", level: 0.18 }, { slot: 4, kind: "snare", level: 0.44 }, { slot: 6, kind: "hat", level: 0.18 }, { slot: 7, kind: "snare", level: 0.3 }],
-        [{ slot: 0, kind: "kick", level: 0.46 }, { slot: 4, kind: "snare", level: 0.22 }],
-        [{ slot: 0, kind: "kick", level: 0.4 }],
-        [{ slot: 0, kind: "kick", level: 0.32 }, { slot: 4, kind: "snare", level: 0.16 }],
-        [{ slot: 0, kind: "kick", level: 0.22 }]
+      const structuralEnergy = [
+        0.18, 0.22, 0.25, 0.3, 0.38, 0.44, 0.5, 0.56,
+        0.78, 0.88, 0.96, 0.9, 0.56, 0.46, 0.34, 0.12
       ];
-      drumBars.forEach((hits, bar) => hits.forEach(hit => {
-        events.push({
+      for (let bar = 0; bar < bars; bar++) {
+        const barValues = source.slice(bar * 8, (bar + 1) * 8);
+        const mean = barValues.reduce((sum, value) => sum + value, 0) / Math.max(1, barValues.length);
+        const movement = barValues.slice(1).reduce(
+          (sum, value, index) => sum + Math.abs(value - barValues[index]), 0
+        ) / Math.max(1, barValues.length - 1);
+        const section = Math.floor(bar / 2);
+        const sectionProfile = analyzeSequenceSection(source, section);
+        const tension = calculateSectionTension(sectionProfile, section);
+        const energy = clamp(
+          structuralEnergy[bar] * 0.62 + mean * 0.16 + movement * 0.5 + tension * 0.12,
+          0.08, 1
+        );
+        const hits: Array<{ slot: number; kind: "kick" | "snare" | "hat"; level: number }> = [];
+        const addHit = (slot: number, kind: "kick" | "snare" | "hat", weight: number) => {
+          if (!hits.some(hit => hit.slot === slot && hit.kind === kind)) {
+            hits.push({ slot, kind, level: clamp(weight, 0.04, 0.88) });
+          }
+        };
+
+        // Keep the pulse legible, but leave the final bar unaccompanied for the cadence.
+        if (bar < 15) addHit(0, "kick", 0.18 + energy * 0.48);
+        const climax = bar >= 8 && bar <= 11;
+        if ((bar % 4 === 1 || bar % 4 === 3 || climax) && bar < 15) {
+          addHit(4, "snare", 0.1 + energy * 0.36);
+        }
+
+        // Let the sequence choose the extra accent rather than replaying a fixed drum grid.
+        const accentSlot = barValues.reduce((best, value, index) =>
+          value > (barValues[best] ?? -Infinity) ? index : best, 0);
+        if (barValues[accentSlot] > mean + 0.16 && accentSlot > 0 && accentSlot !== 4 && bar < 15) {
+          addHit(accentSlot, accentSlot % 2 === 0 ? "hat" : "kick", 0.08 + energy * 0.2);
+        }
+
+        if (climax) {
+          if (movement > 0.08 || bar % 2 === 0) addHit(2, "hat", 0.08 + energy * 0.14);
+          if (movement > 0.06 || bar % 2 === 1) addHit(6, "hat", 0.08 + energy * 0.15);
+        } else if (movement > 0.12 && bar < 15) {
+          const motionSlot = barValues[2] >= barValues[6] ? 2 : 6;
+          addHit(motionSlot, "hat", 0.06 + energy * 0.14);
+        }
+
+        // Phrase-end fills use the last two mathematical samples to choose
+        // a pickup slot and whether it should be a snare or a lighter hat.
+        if ([3, 7, 11].includes(bar)) {
+          const pickupSlot = (barValues[7] ?? 0) >= (barValues[6] ?? 0) ? 7 : 6;
+          addHit(pickupSlot, movement > 0.1 ? "snare" : "hat", 0.1 + energy * 0.2);
+        }
+
+        hits.forEach(hit => events.push({
           time: bar * 4 * beat + hit.slot * 0.5 * beat,
           duration: hit.kind === "kick" ? 0.22 : hit.kind === "snare" ? 0.16 : 0.055,
           frequency: hit.kind === "kick" ? 90 : hit.kind === "snare" ? 180 : 6200,
@@ -441,8 +541,8 @@ export function generateComposition(mode: Mode, options: {
           pan: hit.kind === "hat" ? 0.18 : 0,
           voice: "percussion",
           percussionKind: hit.kind
-        });
-      }));
+        }));
+      }
     }
   }
   events.sort((a, b) => a.time - b.time);

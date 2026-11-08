@@ -85,6 +85,26 @@ function longestGapPerBar(gaps: LeadGap[]): Map<number, LeadGap> {
   return selected;
 }
 
+function chooseChordToneResponse(
+  events: NoteEvent[],
+  time: number,
+  referenceFrequency: number,
+  preferredRatio: number,
+  fallbackSemitones: number
+): number {
+  const candidates = events
+    .filter(event => event.voice === "pad" && event.time <= time && event.time + event.duration >= time)
+    .flatMap(event => [event.frequency / 2, event.frequency, event.frequency * 2])
+    .filter(frequency => frequency > referenceFrequency * 1.04 && frequency < referenceFrequency * 2.4);
+  if (!candidates.length) {
+    return referenceFrequency * Math.pow(2, fallbackSemitones / 12);
+  }
+  const target = referenceFrequency * preferredRatio;
+  return candidates.reduce((best, candidate) =>
+    Math.abs(Math.log(candidate / target)) < Math.abs(Math.log(best / target)) ? candidate : best
+  );
+}
+
 export function resolveInstrumentEvents(composition: Composition, instruments: InstrumentSettings): NoteEvent[] {
   // Shepard layers are already a complete, carefully balanced sound event.
   // Do not turn them into an ordinary ensemble or add sequence-derived bass/pads.
@@ -109,10 +129,10 @@ export function resolveInstrumentEvents(composition: Composition, instruments: I
       const time = gap.start + margin;
       const duration = Math.min(beat * 0.34, gap.end - margin - time);
       if (duration < beat * 0.2) continue;
-      const interval = bar % 2 === 0 ? -2 : 3;
+      const fallbackInterval = bar % 2 === 0 ? 7 : 12;
       events.push({
         time, duration,
-        frequency: gap.source.frequency * Math.pow(2, interval / 12),
+        frequency: chooseChordToneResponse(events, time, gap.source.frequency, 1.32, fallbackInterval),
         velocity: Math.max(0.045, gap.source.velocity * 0.42),
         waveform: "triangle", pan: gap.source.pan * -0.8, voice: "answer"
       });
@@ -128,10 +148,10 @@ export function resolveInstrumentEvents(composition: Composition, instruments: I
       const time = gap.start + margin;
       const duration = Math.min(beat * 0.68, gap.end - margin - time);
       if (duration < beat * 0.38) continue;
-      const interval = bar % 2 === 0 ? 7 : 12;
+      const fallbackInterval = bar % 2 === 0 ? 12 : 7;
       events.push({
         time, duration,
-        frequency: gap.source.frequency * Math.pow(2, interval / 12),
+        frequency: chooseChordToneResponse(events, time, gap.source.frequency, 1.68, fallbackInterval),
         velocity: Math.max(0.025, gap.source.velocity * 0.16),
         waveform: "sawtooth", pan: bar % 2 === 0 ? 0.24 : -0.24, voice: "texture"
       });
