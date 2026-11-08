@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { euclideanPattern, generateComposition, logisticSequence, mandelbrotEscape } from "../src/math";
+import { deriveHarmonicProgression, euclideanPattern, generateComposition, logisticSequence, mandelbrotEscape } from "../src/math";
 describe("mathematical generators", () => {
   it("distributes exactly k Euclidean pulses", () => {
     expect(euclideanPattern(5, 13).filter(Boolean)).toHaveLength(5);
@@ -25,6 +25,32 @@ describe("mathematical generators", () => {
     const a = generateComposition("euclidean", { seed: 0.1 });
     const b = generateComposition("euclidean", { seed: 0.8 });
     expect(a.values).not.toEqual(b.values);
+  });
+  it("derives seed-sensitive chord journeys from all three mathematical sources", () => {
+    const seeds = [0.314159, 0.271828, 0.618034, 0.123456];
+    for (const mode of ["mandelbrot", "euclidean", "chaos"] as const) {
+      const journeys = seeds.map(seed => {
+        const composition = generateComposition(mode, { seed, scale: "Major" });
+        return deriveHarmonicProgression(composition.values, "Major");
+      });
+      expect(new Set(journeys.map(journey => journey.join(","))).size).toBeGreaterThan(1);
+      for (const journey of journeys) {
+        expect(journey).toHaveLength(8);
+        expect(journey[0]).toBe(0);
+        expect(journey[7]).toBe(0);
+        expect(journey.every(degree => degree >= 0 && degree < 7)).toBe(true);
+      }
+    }
+  });
+  it("keeps sequence-derived harmony inside each selected scale", () => {
+    const composition = generateComposition("chaos", { seed: 0.618034 });
+    for (const scale of ["Lydian", "Major", "Minor", "Pentatonic"]) {
+      const progression = deriveHarmonicProgression(composition.values, scale);
+      const scaleLength = scale === "Pentatonic" ? 5 : 7;
+      expect(progression.every(degree => degree >= 0 && degree < scaleLength)).toBe(true);
+      expect(progression[0]).toBe(0);
+      expect(progression[7]).toBe(0);
+    }
   });
   it("arranges bass and sustained chord voices beneath the mathematical lead", () => {
     const composition = generateComposition("mandelbrot", { seed: 0.314159 });
@@ -160,6 +186,31 @@ describe("mathematical generators", () => {
       expect(bass.some(event => Math.abs(event.time - anticipation) < 1e-8)).toBe(true);
     }
     expect(pads.some(event => event.duration > 8 * beat)).toBe(true);
+  });
+  it("uses the sequence-derived chord path for bass roots and movement pickups", () => {
+    const root = 60;
+    const bpm = 120;
+    const beat = 60 / bpm;
+    const scaleNotes = [0, 2, 4, 5, 7, 9, 11];
+    const composition = generateComposition("chaos", {
+      bpm, root, scale: "Major", seed: 0.271828, musicalArrangement: true, musicalExpression: true
+    });
+    const progression = deriveHarmonicProgression(composition.values, "Major");
+    const bass = composition.events.filter(event => event.voice === "bass");
+    const lead = composition.events.filter(event => event.voice === "lead");
+    const midi = (frequency: number) => Math.round(69 + 12 * Math.log2(frequency / 440));
+    progression.forEach((degree, section) => {
+      const anchorTime = section * 8 * beat;
+      const anchor = bass.find(event => Math.abs(event.time - anchorTime) < 1e-8)!;
+      expect(midi(anchor.frequency)).toBe(root + scaleNotes[degree] - 12);
+    });
+    for (const bar of [3, 7, 11]) {
+      const nextSection = Math.floor((bar + 1) / 2);
+      const pickup = lead.find(event =>
+        Math.abs(event.time - (bar * 4 * beat + 7 * 0.5 * beat)) < 1e-8
+      )!;
+      expect(midi(pickup.frequency)).toBe(root + 12 + scaleNotes[progression[nextSection]]);
+    }
   });
   it("keeps musical expression deterministic for the same seed", () => {
     const a = generateComposition("chaos", { seed: 0.42, musicalExpression: true });

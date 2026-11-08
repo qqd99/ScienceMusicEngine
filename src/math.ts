@@ -33,6 +33,68 @@ function scaleNote(value: number, root: number, scale: string): number {
   const degree = Math.floor(clamp(value, 0, 0.9999) * notes.length * 2);
   return root + 12 + Math.floor(degree / notes.length) * 12 + notes[degree % notes.length];
 }
+interface SequenceSectionProfile {
+  mean: number;
+  trend: number;
+  movement: number;
+  centroid: number;
+}
+
+function analyzeSequenceSection(values: readonly number[], section: number): SequenceSectionProfile {
+  const source = values.length ? values : [0.5];
+  const start = Math.floor(section * source.length / 8);
+  const end = Math.max(start + 1, Math.floor((section + 1) * source.length / 8));
+  const segment = source.slice(start, end).map(value => clamp(value, 0, 1));
+  const safe = segment.length ? segment : [0.5];
+  const mean = safe.reduce((sum, value) => sum + value, 0) / safe.length;
+  const quarter = Math.max(1, Math.floor(safe.length / 4));
+  const first = safe.slice(0, quarter), last = safe.slice(-quarter);
+  const trend = last.reduce((sum, value) => sum + value, 0) / last.length -
+    first.reduce((sum, value) => sum + value, 0) / first.length;
+  const movement = safe.slice(1).reduce(
+    (sum, value, index) => sum + Math.abs(value - safe[index]), 0
+  ) / Math.max(1, safe.length - 1);
+  const total = safe.reduce((sum, value) => sum + value, 0);
+  const centroid = total > 1e-9
+    ? safe.reduce((sum, value, index) => sum + value * (index / Math.max(1, safe.length - 1)), 0) / total
+    : 0.5;
+  return { mean, trend, movement, centroid };
+}
+
+/** Derive a deterministic, scale-aware chord path from the mathematical sequence. */
+export function deriveHarmonicProgression(values: readonly number[], scale = "Lydian"): number[] {
+  const source = values.length ? values.map(value => clamp(value, 0, 1)) : [0.5];
+  const globalMean = source.reduce((sum, value) => sum + value, 0) / source.length;
+  let real = 0, imaginary = 0;
+  source.forEach((value, index) => {
+    const centered = value - globalMean;
+    const angle = (index + 1) * 2.399963229728653;
+    real += centered * Math.cos(angle);
+    imaginary += centered * Math.sin(angle);
+  });
+  const phase = Math.hypot(real, imaginary) > 1e-9
+    ? ((Math.atan2(imaginary, real) + Math.PI * 2) % (Math.PI * 2)) / (Math.PI * 2)
+    : 0.5;
+
+  const palettes = scale === "Minor"
+    ? [[0], [5, 3, 1], [3, 6, 2], [2, 4, 4], [0, 5, 3], [5, 3, 1], [4, 4, 6], [0]]
+    : scale === "Pentatonic"
+      ? [[0], [3, 2, 1], [2, 4, 3], [4, 2, 4], [0, 2, 3], [3, 1, 2], [4, 4, 3], [0]]
+      : [[0], [5, 3, 1], [2, 5, 1], [2, 4, 4], [0, 5, 2], [3, 5, 1], [4, 4, 6], [0]];
+
+  return palettes.map((candidates, section) => {
+    if (candidates.length === 1) return candidates[0];
+    const profile = analyzeSequenceSection(source, section);
+    const localCharacter = clamp(
+      profile.mean * 0.3 + (profile.trend * 1.5 + 0.5) * 0.22 +
+      clamp(profile.movement * 2.5, 0, 1) * 0.18 + profile.centroid * 0.3,
+      0, 0.999
+    );
+    const phrasePhase = (phase + section * 0.17320508075688773) % 1;
+    const selector = clamp(localCharacter * 0.55 + phrasePhase * 0.45, 0, 0.999);
+    return candidates[Math.floor(selector * candidates.length)];
+  });
+}
 export function euclideanPattern(pulses: number, steps: number, rotation = 0): boolean[] {
   const n = Math.max(1, Math.floor(steps));
   const k = clamp(Math.floor(pulses), 0, n);
@@ -139,9 +201,7 @@ export function generateComposition(mode: Mode, options: {
   // four-bar movements: statement, development, climax, and reprise/cadence.
   // The final bar of each movement contains a pickup into the next movement.
   const scaleNotes = SCALES[scale] ?? SCALES.Lydian;
-  const chordProgression = scale === "Minor"
-    ? [0, 5, 3, 6, 0, 5, 4, 0]
-    : [0, 3, 5, 4, 0, 3, 4, 0];
+  const chordProgression = deriveHarmonicProgression(values, scale);
 
   if (musicalExpression && mode !== "shepard") {
     const source = values.length ? values : Array.from({ length: steps }, (_, i) => i / steps);
@@ -198,16 +258,33 @@ export function generateComposition(mode: Mode, options: {
       { bar: 7, slots: [0, 2, 4], degrees: [motif[0], motif[2], motif[3]] }
     ];
     for (const phrase of development) {
-      phrase.slots.forEach((slot, i) => addLead(phrase.bar, slot, phrase.degrees[i], {
-        velocity: sectionGain[phrase.bar] * (slot === 0 ? 0.92 : 0.74),
-        durationBeats: 0.42 + (i % 2) * 0.12
-      }));
+      const profile = analyzeSequenceSection(source, Math.floor(phrase.bar / 2));
+      const directionalShift = profile.trend > 0.08 ? 1 : profile.trend < -0.08 ? -1 : 0;
+      const ornamentShift = profile.movement > 0.36 ? 1 : 0;
+      phrase.slots.forEach((slot, i) => {
+        const sourceDegree = phrase.degrees[i];
+        const phraseDegree = sourceDegree + (i % 2 === 1
+          ? directionalShift : i === 2 ? ornamentShift : 0);
+        addLead(phrase.bar, slot, phraseDegree, {
+          velocity: sectionGain[phrase.bar] * (slot === 0 ? 0.92 : 0.74),
+          durationBeats: 0.42 + (i % 2) * 0.12
+        });
+      });
     }
 
-    // III. Climax: expand the motif into a higher, more active sequence.
+    // III. Climax: the sequence's own level and direction shape its melodic arc.
+    const climaxValues = source.slice(64, 96);
+    const climaxMean = climaxValues.reduce((sum, value) => sum + value, 0) / Math.max(1, climaxValues.length);
+    const overallMean = source.reduce((sum, value) => sum + value, 0) / source.length;
+    const climaxQuarter = Math.max(1, Math.floor(climaxValues.length / 4));
+    const climaxTrend = climaxValues.slice(-climaxQuarter).reduce((sum, value) => sum + value, 0) / climaxQuarter -
+      climaxValues.slice(0, climaxQuarter).reduce((sum, value) => sum + value, 0) / climaxQuarter;
+    const climaxLift = climaxMean >= overallMean ? 2 : 1;
+    const climaxTurn = climaxTrend >= 0 ? 1 : -1;
     const climaxContour = [
-      motif[0], motif[1], motif[2] + 1, motif[3] + 1,
-      motif[2], motif[3], motif[1] + 1, motif[3] + 2
+      motif[0], motif[1], motif[2] + climaxLift, motif[3] + climaxLift,
+      motif[2] + climaxTurn, motif[3] + climaxTurn,
+      motif[1] + climaxLift, motif[3] + climaxLift + climaxTurn
     ];
     for (const bar of [8, 9, 10, 11]) {
       climaxContour.forEach((degree, i) => addLead(bar, i, degree + (bar === 9 || bar === 10 ? 1 : 0), {
@@ -256,10 +333,7 @@ export function generateComposition(mode: Mode, options: {
     let previousVoicing = [root + 12, root + 16, root + 19];
 
     for (let section = 0; section < 8; section++) {
-      const sectionValues = values.slice(section * 16, (section + 1) * 16);
-      const mean = sectionValues.length
-        ? sectionValues.reduce((sum, value) => sum + value, 0) / sectionValues.length
-        : 0.5;
+      const profile = analyzeSequenceSection(values, section);
       const degree = chordProgression[section];
       const chordRoot = root + scaleNotes[degree % scaleNotes.length];
       chordRoots.push(chordRoot);
@@ -275,11 +349,14 @@ export function generateComposition(mode: Mode, options: {
           const target = previous[voice];
           return [note - 12, note, note + 12, note + 24]
             .sort((a, b) => Math.abs(a - target) - Math.abs(b - target))[0];
-        });
+        }).sort((a, b) => a - b);
       });
+      const voiceLeadingCost = (candidate: number[]) => candidate.reduce((sum, note, voice) => {
+        const movement = Math.abs(note - previous[voice]);
+        return sum + movement + Math.max(0, movement - 7) * 0.5;
+      }, 0);
       const voicing = candidates.sort((a, b) =>
-        a.reduce((sum, note, i) => sum + Math.abs(note - previous[i]), 0) -
-        b.reduce((sum, note, i) => sum + Math.abs(note - previous[i]), 0)
+        voiceLeadingCost(a) - voiceLeadingCost(b)
       )[0];
       previousVoicing = voicing;
       const seventhIndex = degree + 6;
@@ -287,18 +364,20 @@ export function generateComposition(mode: Mode, options: {
         (seventhIndex >= scaleNotes.length ? 12 : 0);
       const chordTime = section * 8 * beat;
       const chordDuration = (section === 7 ? 8 : 8.48) * beat;
+      const sequenceLevel = 0.84 + profile.mean * 0.2 + profile.movement * 0.12;
+      const chordLevel = chordLevels[section] * sequenceLevel;
 
       for (let voice = 0; voice < 3; voice++) {
         const tone = voicing[voice];
         const pan = (voice - 1) * 0.3;
-        const velocity = 0.078 * chordLevels[section];
+        const velocity = 0.078 * chordLevel;
         events.push({
           time: chordTime, duration: chordDuration, frequency: midiHz(tone),
           velocity, velocityEnd: section === 7 ? 0.002 : velocity * 0.3,
           waveform: "triangle", pan, voice: "pad"
         });
       }
-      const seventhVelocity = 0.02 * (0.7 + mean * 0.5) * chordLevels[section];
+      const seventhVelocity = 0.02 * (0.7 + profile.mean * 0.5) * chordLevel;
       events.push({
         time: chordTime, duration: chordDuration, frequency: midiHz(seventh),
         velocity: seventhVelocity, velocityEnd: section === 7 ? 0.001 : seventhVelocity * 0.3,
@@ -311,11 +390,11 @@ export function generateComposition(mode: Mode, options: {
         const arc = musicalExpression ? accompanimentArc[absoluteBar] : 0.72;
         events.push({
           time: bassTime, duration: 1.55 * beat, frequency: midiHz(chordRoot - 12),
-          velocity: 0.22 * arc, waveform: "triangle", pan: -0.08, voice: "bass"
+          velocity: 0.22 * arc * (0.86 + profile.mean * 0.22 + profile.movement * 0.12), waveform: "triangle", pan: -0.08, voice: "bass"
         });
         events.push({
           time: bassTime + 2 * beat, duration: 1.05 * beat, frequency: midiHz(chordRoot - 5),
-          velocity: 0.13 * arc, waveform: "triangle", pan: 0.08, voice: "bass"
+          velocity: 0.13 * arc * (0.86 + profile.mean * 0.22 + profile.movement * 0.12), waveform: "triangle", pan: 0.08, voice: "bass"
         });
       }
     }
@@ -324,7 +403,9 @@ export function generateComposition(mode: Mode, options: {
     for (let section = 1; section < 8; section++) {
       const bar = section * 2 - 1;
       const time = section * 8 * beat - 0.5 * beat;
-      const arc = musicalExpression ? accompanimentArc[bar] : 0.72;
+      const profile = analyzeSequenceSection(values, section);
+      const arc = (musicalExpression ? accompanimentArc[bar] : 0.72) *
+        (0.86 + profile.mean * 0.22 + profile.movement * 0.12);
       events.push({
         time, duration: 0.36 * beat, frequency: midiHz(chordRoots[section] - 13),
         velocity: 0.12 * arc, waveform: "triangle", pan: 0, voice: "bass"

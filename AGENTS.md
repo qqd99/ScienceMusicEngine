@@ -41,8 +41,8 @@ The browser UI includes mathematical visualization, a moving playhead, tempo, co
 
 ### Musical form and sound system already implemented
 
-- The ordinary musical experiments use a **16-bar composition** with four connected four-bar movements: opening, development, climax, and reprise/cadence. At the default 128 BPM, the piece lasts about 30 seconds. The motif is varied during development, raised and made denser at the climax, then recalled and resolved toward the tonic.
-- The composition can include harmonic arrangement, chord inversions/voice leading, bass movement, and procedurally synthesized kick/snare/hi-hat percussion.
+- The ordinary musical experiments use a **16-bar composition** with four connected four-bar movements: opening, development, climax, and reprise/cadence. At the default 128 BPM, the piece lasts about 30 seconds. The mathematical sequence shapes the opening motif, eight two-bar chord choices, development variations and climax contour; the reprise recalls the motif and resolves to the tonic.
+- The composition can include sequence-derived harmonic progressions, close-voiced chord inversions/voice leading, bass movement, and procedurally synthesized kick/snare/hi-hat percussion.
 - The five dedicated instrument layers are:
   - **Piano:** carries the lead melody.
   - **Plucked Strings:** deterministic call-and-response answers between selected lead phrases.
@@ -107,17 +107,18 @@ After editing:
 
 ## 6. Current handoff / resume point
 
-The user auditioned the adaptive conductor and accepted its instrument selection and balance, but said the musical storytelling was weak, the movements had no transitions, and the piece should last about 30 seconds.
+The user approved Phase 2: **Sequence-aware Musical Intelligence**. The implementation now makes mathematical source values shape the eight two-bar chord choices, phrase-level melodic transformations and climax contour.
 
-The requested refinement is now implemented as a **16-bar form** with four connected four-bar movements (opening, development, climax, reprise/cadence), eight two-bar conductor decisions, and a 30-second default at 128 BPM.
+- The 16-bar form remains four connected four-bar movements at a 30-second default (128 BPM).
+- The eight-chord journey is derived deterministically from each source's local mean, directional trend, movement and weighted position, plus a whole-sequence phase fingerprint. The fingerprint ensures cyclic Euclidean patterns can produce seed-sensitive harmony even when each two-bar window has the same pulse count.
+- The opening and final chord remain tonic; intermediate choices come from scale-specific diatonic palettes. The dominant approach is favored before the final tonic.
+- Development phrases use local source trend and motion to alter motif intervals. The climax contour responds to the source's average level and direction.
+- Chord inversions are selected with a voice-leading cost that penalizes large leaps and avoids crossed voicings.
+- Melodic pickups now target the next sequence-derived chord. Bass and pads use source-derived phrase character for subtle supporting-level changes.
+- Preserve the adaptive conductor exactly: at most two supporting roles per two-bar phrase, enabled instruments are only available, and roles adapt to density/rests/energy. Do not replace it with a fixed scheduler.
+- Preserve live/offline event parity, the +14 dB master chain, all independent instrument controls, and the Shepard illusion's special behavior.
 
-- Preserve the existing selective adaptive orchestration: at most two support roles per two-bar phrase, enabled instruments are only available, and roles adapt to score density/rests/energy.
-- Use melodic pickups in the last bar of the first three movements, bass anticipations before every two-bar chord change, overlapping pad releases, and short percussion fills to connect sections.
-- Keep a small continuity preference for roles across phrase boundaries; do not force arbitrary role changes.
-- Live playback and offline WAV rendering must use the same deterministic events.
-- The Shepard illusion remains its own continuous texture, not an ordinary song arrangement.
-
-**Next action:** ask the user to audition the new 30-second default with all instruments enabled. Focus on whether the four movements now feel connected and whether the climax and reprise form one coherent musical arc. Do not claim musical quality from tests alone.
+**Next action:** verify CI for the Phase 2 commit, then ask the user to compare the same mathematical mode with several seeds. Listen for distinct but coherent harmonic journeys, smoother chord changes, and a climax that reflects the source. Do not claim perceptual success from tests alone.
 
 ### Current output-level revision
 

@@ -17,9 +17,9 @@ After GitHub Pages is enabled with **Settings → Pages → Source: GitHub Actio
 
 ## Composition and orchestration
 
-Ordinary musical experiments use a deterministic **16-bar form** with four connected movements: opening, development, climax, and reprise/cadence. At the default 128 BPM, the composition lasts approximately **30 seconds**. A four-note motif is selected from the mathematical sequence, transformed through the middle sections, raised and made denser at the climax, then recalled and resolved toward the tonic. Short melodic pickups, bass anticipations, overlapping chord-pad releases and percussion fills connect the movements rather than letting them sound like separate blocks.
+Ordinary musical experiments use a deterministic **16-bar form** with four connected movements: opening, development, climax, and reprise/cadence. At the default 128 BPM, the piece lasts approximately **30 seconds**. The mathematical sequence shapes the opening motif, the eight two-bar chord choices, phrase-to-phrase melodic transformations, and the climax contour. A whole-sequence phase signature also makes cyclic sources such as Euclidean rhythms produce different harmonic journeys from different seeds. Chords stay within the selected scale, the opening and final cadence return to the tonic, and voice-leading favors close-moving chord tones. Melodic pickups, bass anticipations, overlapping pad releases and percussion fills connect the movements.
 
-**Musical Arrangement** adds voice-led chords, bass movement and synthesized kick/snare/hat percussion. **Musical Expression** adds the 16-bar motif and shapes the arrangement around the phrase. These features have independent ON/OFF controls.
+**Musical Arrangement** derives its eight-chord progression and supporting dynamics from the mathematical sequence, then adds voice-led chords, bass movement and synthesized kick/snare/hat percussion. **Musical Expression** adds the 16-bar motif and shapes the arrangement around the phrase. These features have independent ON/OFF controls.
 
 The five independently switchable and mixable instrument layers are:
 
