@@ -122,7 +122,16 @@ Preserve:
 - Adaptive conductor behavior (at most two support roles per two-bar phrase), independent instrument toggles/mixer, live/offline event parity, and the +14 dB master chain.
 - No AI music generation or downloaded audio samples.
 
-**Next action:** verify CI for the harmonic-cohesion correction. Then ask the user to audition piano with bass/pads, then add plucked and analog layers one at a time. Confirm the accompaniment now follows the piano's chord changes and that the selected scale remains audible in fallback mode. Tests establish event-level harmony, not perceptual quality.
+**Next action:** ask the user to audition piano with bass/pads, then add plucked and analog layers one at a time. Confirm the accompaniment now follows the piano's chord changes and that the selected scale remains audible in fallback mode. Tests establish event-level harmony, not perceptual quality.
+
+### Last verified harmonic-cohesion correction
+
+- Main implementation commit: `bacf4801c3b0961ae79e782faa0330c491132580` — “Align every ensemble layer to the piano harmony”.
+- Follow-up melody-anchor and Shepard-preservation commits: `6eccc590158682a3796baee7e44c0035301f3363` and `c3c5d7a0ce885a3f48e5e40ea3efe1075c2a6040`.
+- GitHub Actions run **#122** completed successfully: all **51 tests** passed (28 mathematics, 23 audio), the TypeScript/Vite production build passed, and GitHub Pages deployment succeeded.
+- The verified implementation scores source-approved chords against the piano phrase, publishes a shared harmonic map, uses scale-aware fallback pads/bass, and selects supporting answers from the chord active at their entrance.
+- The Shepard experiment still resolves to its original continuous layers without ordinary ensemble accompaniment.
+- Tests validate event-level harmonic relationships, not perceived musical quality. The user still needs to audition the live mix.
 
 ### Last verified Phase 3 composer-level intelligence
 
