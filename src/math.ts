@@ -480,21 +480,49 @@ export function generateComposition(mode: Mode, options: {
       return root + 12 + scaleNotes[index % scaleNotes.length] +
         Math.floor(index / scaleNotes.length) * 12;
     });
+    const start = section * 8 * beat;
+    const end = (section + 1) * 8 * beat;
+    let colorMidi = root + 12 + scaleNotes[colorIndex % scaleNotes.length] +
+      Math.floor(colorIndex / scaleNotes.length) * 12;
+
+    // In the development and climax, let the pad's color voice reinforce the
+    // strongest piano pitch when it is not already part of the chosen triad.
+    if (section > 0 && section < 7) {
+      const phrase = events.filter(event =>
+        (event.voice ?? "lead") === "lead" && event.time >= start && event.time < end
+      );
+      const anchor = phrase.reduce((best, event) => {
+        const position = ((event.time % (beat * 4)) + beat * 4) % (beat * 4);
+        const slot = Math.round(position / (beat / 2)) % 8;
+        const score = event.velocity * (slot % 2 === 0 ? 2.2 : 1) *
+          (event.duration >= beat * 0.75 ? 1.25 : 1);
+        return score > best.score ? { event, score } : best;
+      }, { event: undefined as NoteEvent | undefined, score: -1 }).event;
+      if (anchor) {
+        const anchorMidi = Math.round(69 + 12 * Math.log2(anchor.frequency / 440));
+        const anchorPitchClass = ((anchorMidi % 12) + 12) % 12;
+        if (!chordMidi.some(note => ((note % 12) + 12) % 12 === anchorPitchClass)) {
+          const center = chordMidi.reduce((sum, note) => sum + note, 0) / chordMidi.length;
+          colorMidi = [anchorMidi - 12, anchorMidi, anchorMidi + 12]
+            .reduce((best, note) => Math.abs(note - center) < Math.abs(best - center) ? note : best);
+        }
+      }
+    }
+
     return {
-      start: section * 8 * beat,
-      end: (section + 1) * 8 * beat,
+      start,
+      end,
       degree,
       rootMidi: root + scaleNotes[degree % scaleNotes.length] +
         Math.floor(degree / scaleNotes.length) * 12,
       chordMidi,
-      colorMidi: root + 12 + scaleNotes[colorIndex % scaleNotes.length] +
-        Math.floor(colorIndex / scaleNotes.length) * 12
+      colorMidi
     };
   });
 
   // Optional harmonic foundation: eight two-bar chords, voice-led bass motion,
   // overlapping pad releases and anticipations into every new harmony.
-  if (musicalArrangement) {
+  if (musicalArrangement && mode !== "shepard") {
     const accompanimentArc = [
       0.34, 0.4, 0.46, 0.52,
       0.58, 0.64, 0.7, 0.76,

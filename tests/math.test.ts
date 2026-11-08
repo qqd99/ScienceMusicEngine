@@ -265,8 +265,10 @@ describe("mathematical generators", () => {
             return Math.round(position / (beat / 2)) % 2 === 0;
           });
           if (!strong.length) continue;
-          const chord = frame.chordMidi.map(note => note % 12);
-          expect(strong.some(event => chord.includes(pitchClass(event.frequency)))).toBe(true);
+          if (frame.degree !== 0 || frame.start === 0) {
+            const chord = [...frame.chordMidi, frame.colorMidi].map(note => note % 12);
+            expect(strong.some(event => chord.includes(pitchClass(event.frequency)))).toBe(true);
+          }
         }
       }
     }

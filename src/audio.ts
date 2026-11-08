@@ -85,6 +85,20 @@ function longestGapPerBar(gaps: LeadGap[]): Map<number, LeadGap> {
   return selected;
 }
 
+const midiToFrequency = (midi: number) => 440 * Math.pow(2, (midi - 69) / 12);
+
+function harmonicFrameAt(
+  harmony: HarmonicFrame[] | undefined,
+  time: number,
+  anticipation = 0
+): HarmonicFrame | undefined {
+  if (!harmony?.length) return undefined;
+  const next = harmony.find(frame => frame.start > time + 1e-8);
+  if (next && time >= next.start - anticipation - 1e-8) return next;
+  return harmony.find(frame => time >= frame.start - 1e-8 && time < frame.end - 1e-8) ??
+    harmony[harmony.length - 1];
+}
+
 function chooseChordToneResponse(
   events: NoteEvent[],
   harmony: HarmonicFrame[] | undefined,
