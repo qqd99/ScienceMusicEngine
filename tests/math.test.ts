@@ -206,9 +206,9 @@ describe("mathematical generators", () => {
     });
     for (const bar of [3, 7, 11]) {
       const nextSection = Math.floor((bar + 1) / 2);
-      const pickup = lead.find(event =>
+      const pickup = lead.filter(event =>
         Math.abs(event.time - (bar * 4 * beat + 7 * 0.5 * beat)) < 1e-8
-      )!;
+      ).slice(-1)[0]!;
       expect(midi(pickup.frequency)).toBe(root + 12 + scaleNotes[progression[nextSection]]);
     }
   });
