@@ -122,7 +122,15 @@ Preserve:
 - Adaptive conductor behavior (at most two support roles per two-bar phrase), independent instrument toggles/mixer, live/offline event parity, and the +14 dB master chain.
 - All existing instrument routing and fallback behavior. No AI music generation or downloaded audio samples.
 
-**Next action:** verify the Phase 3 GitHub Actions run for the exact commit. Then ask the user to audition the same mode across several seeds, focusing on whether motif transformations are recognizable, tension builds and resolves, and ensemble answers fit the harmony. Tests establish deterministic structure, not perceptual quality.
+**Next action:** ask the user to audition the same mode across several seeds, focusing on whether motif transformations are recognizable, tension builds and resolves, and ensemble answers fit the harmony. Tests establish deterministic structure, not perceptual quality.
+
+### Last verified Phase 3 composer-level intelligence
+
+- Phase 3 implementation commit: `39c733c31323cbf638eba80ec2cf595367797cda` — “Develop mathematical motifs into expressive musical phrases”.
+- Source-scope correction: `e49cc0a02cf04d6594c102680131631dfccff69b` — shares the normalized mathematical sequence with the rhythm arranger.
+- GitHub Actions run **#118** completed successfully: all **49 tests** passed (27 mathematics, 22 audio), the TypeScript/Vite production build passed, and GitHub Pages deployment succeeded.
+- The verified implementation includes mathematical motif extraction and transformations, tension-aware chord colors and tonic resolution, source-shaped drum accents/fills, and chord-tone ensemble responses.
+- This verification applies to the Phase 3 implementation commit above; check the current branch head and its own Actions run after later changes.
 
 ### Current output-level revision
 
