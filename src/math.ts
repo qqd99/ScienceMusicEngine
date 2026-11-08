@@ -260,9 +260,9 @@ export function generateComposition(mode: Mode, options: {
   // The final bar of each movement contains a pickup into the next movement.
   const scaleNotes = SCALES[scale] ?? SCALES.Lydian;
   const chordProgression = deriveHarmonicProgression(values, scale);
+  const source = values.length ? values : Array.from({ length: steps }, (_, i) => i / steps);
 
   if (musicalExpression && mode !== "shepard") {
-    const source = values.length ? values : Array.from({ length: steps }, (_, i) => i / steps);
     const motif = deriveMusicalMotif(source, scale);
     const motifTransforms = transformMusicalMotif(motif, scaleNotes.length);
     const sectionGain = [
