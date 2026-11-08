@@ -11,6 +11,14 @@ export interface NoteEvent {
   voice?: "lead" | "answer" | "texture" | "bass" | "pad" | "percussion";
   percussionKind?: "kick" | "snare" | "hat";
 }
+export interface HarmonicFrame {
+  start: number;
+  end: number;
+  degree: number;
+  rootMidi: number;
+  chordMidi: number[];
+  colorMidi: number;
+}
 export interface Composition {
   events: NoteEvent[];
   duration: number;
@@ -19,12 +27,19 @@ export interface Composition {
   richInstruments: boolean;
   musicalArrangement: boolean;
   musicalExpression: boolean;
+  harmony?: HarmonicFrame[];
 }
 const SCALES: Record<string, number[]> = {
   "Lydian": [0, 2, 4, 6, 7, 9, 11],
   "Major": [0, 2, 4, 5, 7, 9, 11],
   "Minor": [0, 2, 3, 5, 7, 8, 10],
   "Pentatonic": [0, 2, 4, 7, 9]
+};
+const HARMONY_PALETTES: Record<string, number[][]> = {
+  "Minor": [[0], [5, 3, 1], [3, 6, 2], [2, 4, 4], [0, 5, 3], [5, 3, 1], [4, 4, 6], [0]],
+  "Pentatonic": [[0], [3, 2, 1], [2, 4, 3], [4, 2, 4], [0, 2, 3], [3, 1, 2], [4, 4, 3], [0]],
+  "Major": [[0], [5, 3, 1], [2, 5, 1], [2, 4, 4], [0, 5, 2], [3, 5, 1], [4, 4, 6], [0]],
+  "Lydian": [[0], [5, 3, 1], [2, 5, 1], [2, 4, 4], [0, 5, 2], [3, 5, 1], [4, 4, 6], [0]]
 };
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const midiHz = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
@@ -76,11 +91,7 @@ export function deriveHarmonicProgression(values: readonly number[], scale = "Ly
     ? ((Math.atan2(imaginary, real) + Math.PI * 2) % (Math.PI * 2)) / (Math.PI * 2)
     : 0.5;
 
-  const palettes = scale === "Minor"
-    ? [[0], [5, 3, 1], [3, 6, 2], [2, 4, 4], [0, 5, 3], [5, 3, 1], [4, 4, 6], [0]]
-    : scale === "Pentatonic"
-      ? [[0], [3, 2, 1], [2, 4, 3], [4, 2, 4], [0, 2, 3], [3, 1, 2], [4, 4, 3], [0]]
-      : [[0], [5, 3, 1], [2, 5, 1], [2, 4, 4], [0, 5, 2], [3, 5, 1], [4, 4, 6], [0]];
+  const palettes = HARMONY_PALETTES[scale] ?? HARMONY_PALETTES.Lydian;
 
   return palettes.map((candidates, section) => {
     if (candidates.length === 1) return candidates[0];
@@ -95,6 +106,61 @@ export function deriveHarmonicProgression(values: readonly number[], scale = "Ly
     return candidates[Math.floor(selector * candidates.length)];
   });
 }
+/** Prefer source-derived chord alternatives that best support the actual piano phrase. */
+function alignHarmonicProgressionToLead(
+  scale: string,
+  root: number,
+  lead: readonly NoteEvent[],
+  preferred: readonly number[],
+  beat: number
+): number[] {
+  const scaleNotes = SCALES[scale] ?? SCALES.Lydian;
+  const palette = HARMONY_PALETTES[scale] ?? HARMONY_PALETTES.Lydian;
+  const barDuration = beat * 4;
+
+  return preferred.map((preferredDegree, section) => {
+    if (section === 0 || section === 7) return preferredDegree;
+    const start = section * 8 * beat;
+    const end = start + 8 * beat;
+    const phrase = lead.filter(event => event.time >= start && event.time < end);
+    if (!phrase.length) return preferredDegree;
+
+    const weightedNotes = phrase.map(event => {
+      const position = ((event.time % barDuration) + barDuration) % barDuration;
+      const slot = Math.round(position / (beat / 2)) % 8;
+      const accent = slot % 2 === 0 ? 2.2 : 1;
+      const sustain = event.duration >= beat * 0.75 ? 1.25 : 1;
+      return {
+        pitchClass: ((Math.round(69 + 12 * Math.log2(event.frequency / 440)) % 12) + 12) % 12,
+        weight: accent * sustain * (0.8 + event.velocity * 0.4)
+      };
+    });
+    const totalWeight = weightedNotes.reduce((sum, note) => sum + note.weight, 0) || 1;
+    const candidates = [...new Set(palette[section] ?? [preferredDegree])];
+
+    const score = (degree: number) => {
+      const chord = [0, 2, 4].map(offset => {
+        const index = degree + offset;
+        return (root + scaleNotes[index % scaleNotes.length] +
+          Math.floor(index / scaleNotes.length) * 12) % 12;
+      });
+      const fit = weightedNotes.reduce((sum, note) => {
+        const distance = Math.min(...chord.map(tone => {
+          const interval = Math.abs(note.pitchClass - tone);
+          return Math.min(interval, 12 - interval);
+        }));
+        return sum + note.weight * (distance === 0 ? 1 : distance <= 2 ? 0.3 : 0);
+      }, 0) / totalWeight;
+      const sourcePreference = degree === preferredDegree ? 0.12 : 0;
+      return fit + sourcePreference;
+    };
+
+    return candidates.reduce((best, candidate) =>
+      score(candidate) > score(best) + 1e-9 ? candidate : best
+    , candidates[0]);
+  });
+}
+
 export function deriveMusicalMotif(values: readonly number[], scale = "Lydian"): number[] {
   const scaleNotes = SCALES[scale] ?? SCALES.Lydian;
   const source = values.length ? values.map(value => clamp(value, 0, 1)) : [0.5];
@@ -259,7 +325,7 @@ export function generateComposition(mode: Mode, options: {
   // four-bar movements: statement, development, climax, and reprise/cadence.
   // The final bar of each movement contains a pickup into the next movement.
   const scaleNotes = SCALES[scale] ?? SCALES.Lydian;
-  const chordProgression = deriveHarmonicProgression(values, scale);
+  let chordProgression = deriveHarmonicProgression(values, scale);
   const source = values.length ? values : Array.from({ length: steps }, (_, i) => i / steps);
 
   if (musicalExpression && mode !== "shepard") {
@@ -364,19 +430,67 @@ export function generateComposition(mode: Mode, options: {
     addLead(14, 6, scaleNotes.length - 1, { velocity: 0.34, durationBeats: 0.3 });
     addLead(15, 0, 0, { velocity: 0.38, durationBeats: 3.82, wave: "triangle" });
 
-    // Transitional pickups point toward the next harmonic destination.
+  }
+
+  // Choose the source-approved chord alternatives that best support the piano's
+  // actual phrase, then share this exact harmonic map with every instrument.
+  chordProgression = alignHarmonicProgressionToLead(
+    scale, root, events.filter(event => (event.voice ?? "lead") === "lead"),
+    chordProgression, beat
+  );
+
+  if (musicalExpression && mode !== "shepard") {
+    const sectionGain = [
+      0.38, 0.42, 0.46, 0.5,
+      0.56, 0.62, 0.68, 0.74,
+      0.84, 0.94, 1.0, 0.96,
+      0.78, 0.68, 0.52, 0.3
+    ];
     for (const bar of [3, 7, 11]) {
       const nextChordIndex = Math.floor((bar + 1) / 2);
       const targetDegree = chordProgression[nextChordIndex];
       const transitionGain = sectionGain[bar];
-      addLead(bar, 6, targetDegree - 1, {
-        velocity: transitionGain * 0.66, durationBeats: 0.28
-      });
-      addLead(bar, 7, targetDegree, {
-        velocity: transitionGain * 0.78, durationBeats: 0.26
-      });
+      const addLead = (slot: number, degree: number, velocity: number, durationBeats: number) => {
+        const scaleDegree = ((degree % scaleNotes.length) + scaleNotes.length) % scaleNotes.length;
+        const midi = root + 12 + scaleNotes[scaleDegree];
+        events.push({
+          time: bar * 4 * beat + slot * 0.5 * beat,
+          duration: durationBeats * beat,
+          frequency: midiHz(midi),
+          velocity,
+          waveform: "sine",
+          pan: Math.sin((bar * 8 + slot) * 0.23) * 0.24,
+          voice: "lead"
+        });
+      };
+      addLead(6, targetDegree - 1, transitionGain * 0.66, 0.28);
+      addLead(7, targetDegree, transitionGain * 0.78, 0.26);
     }
   }
+
+  const harmony: HarmonicFrame[] = mode === "shepard" ? [] : chordProgression.map((degree, section) => {
+    const profile = analyzeSequenceSection(values, section);
+    const tension = calculateSectionTension(profile, section);
+    const colorOffset = section === 0 ? 1
+      : section === 7 ? 0
+        : scaleNotes.length >= 7 && tension >= 0.55 ? 6 : 4;
+    const colorIndex = degree + colorOffset;
+    const chordMidi = [0, 2, 4].map(offset => {
+      const index = degree + offset;
+      return root + 12 + scaleNotes[index % scaleNotes.length] +
+        Math.floor(index / scaleNotes.length) * 12;
+    });
+    return {
+      start: section * 8 * beat,
+      end: (section + 1) * 8 * beat,
+      degree,
+      rootMidi: root + scaleNotes[degree % scaleNotes.length] +
+        Math.floor(degree / scaleNotes.length) * 12,
+      chordMidi,
+      colorMidi: root + 12 + scaleNotes[colorIndex % scaleNotes.length] +
+        Math.floor(colorIndex / scaleNotes.length) * 12
+    };
+  });
 
   // Optional harmonic foundation: eight two-bar chords, voice-led bass motion,
   // overlapping pad releases and anticipations into every new harmony.
@@ -394,14 +508,10 @@ export function generateComposition(mode: Mode, options: {
     for (let section = 0; section < 8; section++) {
       const profile = analyzeSequenceSection(values, section);
       const tension = calculateSectionTension(profile, section);
-      const degree = chordProgression[section];
-      const chordRoot = root + scaleNotes[degree % scaleNotes.length];
+      const frame = harmony[section];
+      const chordRoot = frame.rootMidi;
       chordRoots.push(chordRoot);
-      const triad = [0, 2, 4].map(offset => {
-        const index = degree + offset;
-        return root + 12 + scaleNotes[index % scaleNotes.length] +
-          (index >= scaleNotes.length ? 12 : 0);
-      });
+      const triad = frame.chordMidi;
       const previous = section === 0 ? [root + 12, root + 16, root + 19] : previousVoicing;
       const candidates = [0, 1, 2].map(inversion => {
         const rotated = [...triad.slice(inversion), ...triad.slice(0, inversion).map(note => note + 12)];
@@ -421,12 +531,7 @@ export function generateComposition(mode: Mode, options: {
       previousVoicing = voicing;
       // Open on an add-9 color, increase extensions as tension rises, then
       // replace the leading-tone color with an octave tonic at the final cadence.
-      const colorOffset = section === 0 ? 1
-        : section === 7 ? 0
-          : scaleNotes.length >= 7 && tension >= 0.55 ? 6 : 4;
-      const colorIndex = degree + colorOffset;
-      const colorTone = root + 12 + scaleNotes[colorIndex % scaleNotes.length] +
-        (colorIndex >= scaleNotes.length ? 12 : 0);
+      const colorTone = frame.colorMidi;
       const chordTime = section * 8 * beat;
       const chordDuration = (section === 7 ? 8 : 8.48) * beat;
       const sequenceLevel = 0.84 + profile.mean * 0.16 + profile.movement * 0.1 + tension * 0.08;
@@ -546,5 +651,5 @@ export function generateComposition(mode: Mode, options: {
     }
   }
   events.sort((a, b) => a.time - b.time);
-  return { events, duration, values, label: mode, richInstruments, musicalArrangement, musicalExpression };
+  return { events, duration, values, label: mode, richInstruments, musicalArrangement, musicalExpression, harmony };
 }

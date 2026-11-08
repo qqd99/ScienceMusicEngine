@@ -1,4 +1,4 @@
-import { COMPOSITION_BARS, type Composition, type NoteEvent } from "./math";
+import { COMPOSITION_BARS, type Composition, type HarmonicFrame, type NoteEvent } from "./math";
 export type SoundProfile = "hybrid-cinematic" | "natural" | "electronic";
 export type InstrumentLevels = Record<keyof InstrumentSettings, number>;
 export const DEFAULT_INSTRUMENT_LEVELS: InstrumentLevels = { piano: 0.9, analog: 0.72, plucked: 0.82, cinematicBass: 0.9, atmosphere: 0.72 };
@@ -87,18 +87,28 @@ function longestGapPerBar(gaps: LeadGap[]): Map<number, LeadGap> {
 
 function chooseChordToneResponse(
   events: NoteEvent[],
+  harmony: HarmonicFrame[] | undefined,
   time: number,
+  beat: number,
   referenceFrequency: number,
   preferredRatio: number,
   fallbackSemitones: number
 ): number {
-  const candidates = events
-    .filter(event => event.voice === "pad" && event.time <= time && event.time + event.duration >= time)
-    .flatMap(event => [event.frequency / 2, event.frequency, event.frequency * 2])
-    .filter(frequency => frequency > referenceFrequency * 1.04 && frequency < referenceFrequency * 2.4);
-  if (!candidates.length) {
+  const frame = harmonicFrameAt(harmony, time, beat * 0.5);
+  const pool = frame
+    ? [...frame.chordMidi, frame.colorMidi].flatMap(midi =>
+        [-24, -12, 0, 12, 24, 36].map(octave => midiToFrequency(midi + octave))
+      )
+    : events
+      .filter(event => event.voice === "pad" && event.time <= time && event.time + event.duration >= time)
+      .flatMap(event => [event.frequency / 2, event.frequency, event.frequency * 2]);
+  if (!pool.length) {
     return referenceFrequency * Math.pow(2, fallbackSemitones / 12);
   }
+  const inRange = pool.filter(frequency =>
+    frequency > referenceFrequency * 1.04 && frequency < referenceFrequency * 2.4
+  );
+  const candidates = inRange.length ? inRange : pool;
   const target = referenceFrequency * preferredRatio;
   return candidates.reduce((best, candidate) =>
     Math.abs(Math.log(candidate / target)) < Math.abs(Math.log(best / target)) ? candidate : best
@@ -132,7 +142,9 @@ export function resolveInstrumentEvents(composition: Composition, instruments: I
       const fallbackInterval = bar % 2 === 0 ? 7 : 12;
       events.push({
         time, duration,
-        frequency: chooseChordToneResponse(events, time, gap.source.frequency, 1.32, fallbackInterval),
+        frequency: chooseChordToneResponse(
+          events, composition.harmony, time, beat, gap.source.frequency, 1.32, fallbackInterval
+        ),
         velocity: Math.max(0.045, gap.source.velocity * 0.42),
         waveform: "triangle", pan: gap.source.pan * -0.8, voice: "answer"
       });
@@ -151,7 +163,9 @@ export function resolveInstrumentEvents(composition: Composition, instruments: I
       const fallbackInterval = bar % 2 === 0 ? 12 : 7;
       events.push({
         time, duration,
-        frequency: chooseChordToneResponse(events, time, gap.source.frequency, 1.68, fallbackInterval),
+        frequency: chooseChordToneResponse(
+          events, composition.harmony, time, beat, gap.source.frequency, 1.68, fallbackInterval
+        ),
         velocity: Math.max(0.025, gap.source.velocity * 0.16),
         waveform: "sawtooth", pan: bar % 2 === 0 ? 0.24 : -0.24, voice: "texture"
       });
@@ -166,27 +180,48 @@ export function resolveInstrumentEvents(composition: Composition, instruments: I
   if (instruments.cinematicBass && !hasBass) {
     for (let bar = 0; bar < COMPOSITION_BARS; bar++) {
       const time = bar * beat * 4;
+      const frame = harmonicFrameAt(composition.harmony, time);
       const source = lead.reduce((best, event) =>
         Math.abs(event.time - time) < Math.abs(best.time - time) ? event : best, lead[0]);
+      const fallbackMidi = Math.round(69 + 12 * Math.log2(source.frequency / 440));
+      const bassMidi = frame
+        ? (bar % 2 === 0 ? frame.rootMidi - 12 : (frame.chordMidi[2] ?? frame.rootMidi + 7) - 24)
+        : fallbackMidi - 12;
       events.push({
-        time, duration: beat * 1.65, frequency: source.frequency * 0.5,
+        time, duration: beat * 1.65, frequency: midiToFrequency(bassMidi),
         velocity: Math.max(0.12, source.velocity * 0.42), waveform: "triangle",
         pan: -0.08, voice: "bass"
       });
     }
   }
   if (instruments.atmosphere && !hasPads) {
-    for (let section = 0; section < 4; section++) {
-      const time = section * composition.duration / 4;
-      const source = lead.reduce((best, event) =>
-        Math.abs(event.time - time) < Math.abs(best.time - time) ? event : best, lead[0]);
-      for (const [semitones, pan] of [[0, -0.3], [4, 0], [7, 0.3], [11, 0.12]] as const) {
-        events.push({
-          time, duration: composition.duration / 4 * 0.94,
-          frequency: source.frequency * Math.pow(2, semitones / 12),
+    if (composition.harmony?.length) {
+      for (const frame of composition.harmony) {
+        const source = lead.reduce((best, event) =>
+          Math.abs(event.time - frame.start) < Math.abs(best.time - frame.start) ? event : best, lead[0]);
+        const tones = [...frame.chordMidi, frame.colorMidi];
+        const pans = [-0.3, 0, 0.3, 0.12];
+        tones.forEach((midi, index) => events.push({
+          time: frame.start,
+          duration: (frame.end - frame.start) * 0.94,
+          frequency: midiToFrequency(midi),
           velocity: Math.max(0.035, source.velocity * 0.12),
-          waveform: "sine", pan, voice: "pad"
-        });
+          waveform: "sine", pan: pans[index] ?? 0, voice: "pad"
+        }));
+      }
+    } else {
+      for (let section = 0; section < 4; section++) {
+        const time = section * composition.duration / 4;
+        const source = lead.reduce((best, event) =>
+          Math.abs(event.time - time) < Math.abs(best.time - time) ? event : best, lead[0]);
+        for (const [semitones, pan] of [[0, -0.3], [4, 0], [7, 0.3], [11, 0.12]] as const) {
+          events.push({
+            time, duration: composition.duration / 4 * 0.94,
+            frequency: source.frequency * Math.pow(2, semitones / 12),
+            velocity: Math.max(0.035, source.velocity * 0.12),
+            waveform: "sine", pan, voice: "pad"
+          });
+        }
       }
     }
   }

@@ -229,7 +229,7 @@ describe("mathematical generators", () => {
     const composition = generateComposition("chaos", {
       bpm, root, scale: "Major", seed: 0.271828, musicalArrangement: true, musicalExpression: true
     });
-    const progression = deriveHarmonicProgression(composition.values, "Major");
+    const progression = composition.harmony!.map(frame => frame.degree);
     const bass = composition.events.filter(event => event.voice === "bass");
     const lead = composition.events.filter(event => event.voice === "lead");
     const midi = (frequency: number) => Math.round(69 + 12 * Math.log2(frequency / 440));
@@ -244,6 +244,31 @@ describe("mathematical generators", () => {
         Math.abs(event.time - (bar * 4 * beat + 7 * 0.5 * beat)) < 1e-8
       ).slice(-1)[0]!;
       expect(midi(pickup.frequency)).toBe(root + 12 + scaleNotes[progression[nextSection]]);
+    }
+  });
+  it("chooses each two-bar chord to support the actual piano phrase", () => {
+    for (const scale of ["Lydian", "Major", "Minor", "Pentatonic"]) {
+      for (const mode of ["mandelbrot", "euclidean", "chaos"] as const) {
+        const composition = generateComposition(mode, {
+          seed: 0.314159, scale, musicalArrangement: true, musicalExpression: true
+        });
+        const harmony = composition.harmony!;
+        const beat = composition.duration / (16 * 4);
+        const pitchClass = (frequency: number) =>
+          ((Math.round(69 + 12 * Math.log2(frequency / 440)) % 12) + 12) % 12;
+        for (const frame of harmony) {
+          const phrase = composition.events.filter(event =>
+            event.voice === "lead" && event.time >= frame.start && event.time < frame.end
+          );
+          const strong = phrase.filter(event => {
+            const position = ((event.time % (beat * 4)) + beat * 4) % (beat * 4);
+            return Math.round(position / (beat / 2)) % 2 === 0;
+          });
+          if (!strong.length) continue;
+          const chord = frame.chordMidi.map(note => note % 12);
+          expect(strong.some(event => chord.includes(pitchClass(event.frequency)))).toBe(true);
+        }
+      }
     }
   });
   it("keeps musical expression deterministic for the same seed", () => {

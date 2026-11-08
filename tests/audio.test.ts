@@ -41,7 +41,7 @@ describe("procedural instrument controls", () => {
     expect(a.some(event => event.voice === "bass")).toBe(true);
     expect(a.some(event => event.voice === "pad")).toBe(true);
     expect(a.filter(event => event.voice === "bass")).toHaveLength(16);
-    expect(a.filter(event => event.voice === "pad")).toHaveLength(16);
+    expect(a.filter(event => event.voice === "pad")).toHaveLength(32);
   });
 
   it("uses real arrangement bass and chords instead of generating fallback duplicates", () => {
@@ -79,21 +79,52 @@ describe("procedural instrument controls", () => {
     const composition = generateComposition("mandelbrot", {
       seed: 0.314159, musicalArrangement: true, musicalExpression: true
     });
-    const pads = composition.events.filter(event => event.voice === "pad");
     const resolved = resolveInstrumentEvents(composition, {
-      piano: true, analog: false, plucked: true, cinematicBass: true, atmosphere: true
+      piano: true, analog: true, plucked: true, cinematicBass: true, atmosphere: true
     });
     const answers = resolved.filter(event => event.voice === "answer");
+    const textures = resolved.filter(event => event.voice === "texture");
     const pitchClass = (frequency: number) =>
-      Math.round(69 + 12 * Math.log2(frequency / 440)) % 12;
+      ((Math.round(69 + 12 * Math.log2(frequency / 440)) % 12) + 12) % 12;
+    const frameAt = (time: number) => {
+      const beat = composition.duration / (16 * 4);
+      const next = composition.harmony!.find(frame => frame.start > time + 1e-8);
+      return next && time >= next.start - beat * 0.5 - 1e-8
+        ? next
+        : composition.harmony!.find(frame => time >= frame.start - 1e-8 && time < frame.end - 1e-8)!;
+    };
     expect(answers.length).toBeGreaterThan(0);
-    for (const answer of answers) {
-      const activePads = pads.filter(pad =>
-        pad.time <= answer.time && pad.time + pad.duration >= answer.time
-      );
-      if (activePads.length) {
-        expect(activePads.some(pad => pitchClass(pad.frequency) === pitchClass(answer.frequency))).toBe(true);
-      }
+    for (const event of [...answers, ...textures]) {
+      const frame = frameAt(event.time);
+      const chord = [...frame.chordMidi, frame.colorMidi].map(note => note % 12);
+      expect(chord).toContain(pitchClass(event.frequency));
+    }
+  });
+  it("builds fallback bass and pads from the selected scale's shared chord frames", () => {
+    const composition = generateComposition("mandelbrot", {
+      seed: 0.314159, scale: "Minor", musicalArrangement: false, musicalExpression: true
+    });
+    const resolved = resolveInstrumentEvents(composition, {
+      piano: true, analog: false, plucked: false, cinematicBass: true, atmosphere: true
+    });
+    const pads = resolved.filter(event => event.voice === "pad");
+    const bass = resolved.filter(event => event.voice === "bass");
+    const pitchClass = (frequency: number) =>
+      ((Math.round(69 + 12 * Math.log2(frequency / 440)) % 12) + 12) % 12;
+    expect(pads).toHaveLength(32);
+    expect(bass).toHaveLength(16);
+    for (const frame of composition.harmony!) {
+      const framePads = pads.filter(event => event.time === frame.start);
+      const chord = [...frame.chordMidi, frame.colorMidi].map(note => note % 12);
+      expect(framePads).toHaveLength(4);
+      expect(framePads.every(event => chord.includes(pitchClass(event.frequency)))).toBe(true);
+    }
+    for (const event of bass) {
+      const bar = Math.round(event.time / (composition.duration / 16));
+      const frame = composition.harmony![Math.floor(bar / 2)];
+      const allowed = [frame.rootMidi - 12, (frame.chordMidi[2] ?? frame.rootMidi + 7) - 24]
+        .map(note => ((note % 12) + 12) % 12);
+      expect(allowed).toContain(pitchClass(event.frequency));
     }
   });
   it("does not create string answers or analog counterlines when those instruments are off", () => {

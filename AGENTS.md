@@ -42,7 +42,7 @@ The browser UI includes mathematical visualization, a moving playhead, tempo, co
 ### Musical form and sound system already implemented
 
 - The ordinary musical experiments use a **16-bar composition** with four connected four-bar movements: opening, development, climax, and reprise/cadence. At the default 128 BPM, the piece lasts about 30 seconds. The mathematical sequence shapes the opening motif, eight two-bar chord choices, development variations and climax contour; the reprise recalls the motif and resolves to the tonic.
-- The composition can include sequence-derived harmonic progressions, close-voiced chord inversions/voice leading, tension-aware chord colors and tonic cadence, source-shaped bass/drum movement, and procedurally synthesized kick/snare/hi-hat percussion.
+- The composition can include sequence-derived harmonic progressions selected to support the actual piano phrase, close-voiced chord inversions/voice leading, tension-aware chord colors and tonic cadence, scale-aware bass/pad/answer/texture parts sharing one harmonic map, source-shaped drums, and procedurally synthesized kick/snare/hi-hat percussion.
 - The five dedicated instrument layers are:
   - **Piano:** carries the lead melody.
   - **Plucked Strings:** deterministic call-and-response answers between selected lead phrases.
@@ -107,22 +107,22 @@ After editing:
 
 ## 6. Current handoff / resume point
 
-The user approved Phase 3: **Composer-Level Musical Intelligence** — make the engine sound like a composer interpreting mathematics rather than an algorithm assembling notes.
+The user reported that not all instruments sounded harmonically connected to the piano. The concrete issue was that the chord progression was selected independently of the actual lead phrase, fallback pads used fixed major intervals regardless of the selected scale, and response notes could be selected from overlapping pad tails belonging to the previous chord.
 
-The Phase 3 implementation now:
-- Extracts a deterministic four-note identity from the opening mathematical contour; the overall source level sets its tonal anchor and local contour changes set its intervals.
-- Develops that identity through diatonic inversion, retrograde and sequence, then recalls the original motif in the reprise.
-- Shapes chord extensions and supporting energy with a structural tension curve modulated by source movement and directional change. The opening uses an open add-9 color; tension can introduce richer extensions; the final tonic replaces the leading-tone color with a stable octave tonic.
-- Builds the drum groove around a stable phrase pulse while using per-bar source values to select accents, hats and phrase-end fills. The final bar releases percussion for the cadence.
-- Makes plucked and analog responses choose from chord tones sounding at the response time instead of relying on fixed chromatic intervals.
+The current harmonic-cohesion correction:
+- Chooses each source-approved two-bar chord by scoring how well its diatonic triad supports the actual piano phrase, with stronger weight on accented and sustained notes. The piano remains the mathematical lead; it is not forcibly rewritten to fit a disconnected accompaniment.
+- Publishes one shared eight-frame harmonic map (root, triad, color tone, start/end) on the composition. The arranged bass, pad voicings, plucked answers and analog counterlines all use that same map.
+- Makes supporting responses choose from the chord active at their entrance, including the incoming chord during a transition pickup, rather than sampling every overlapping pad note.
+- Makes fallback pads and bass use the same scale-aware chord frames instead of fixed major intervals or arbitrary lead-note transpositions.
+- Uses root/fifth bass support; percussion remains a rhythmic rather than pitched harmony role.
 
 Preserve:
-- Determinism for fixed mode, seed and controls; mathematics must remain the source of musical content.
+- Determinism for fixed mode, seed and controls; mathematics and the piano phrase remain the source of musical ideas.
 - The 16-bar/30-second four-movement form and the Shepard illusion's separate behavior.
 - Adaptive conductor behavior (at most two support roles per two-bar phrase), independent instrument toggles/mixer, live/offline event parity, and the +14 dB master chain.
-- All existing instrument routing and fallback behavior. No AI music generation or downloaded audio samples.
+- No AI music generation or downloaded audio samples.
 
-**Next action:** ask the user to audition the same mode across several seeds, focusing on whether motif transformations are recognizable, tension builds and resolves, and ensemble answers fit the harmony. Tests establish deterministic structure, not perceptual quality.
+**Next action:** verify CI for the harmonic-cohesion correction. Then ask the user to audition piano with bass/pads, then add plucked and analog layers one at a time. Confirm the accompaniment now follows the piano's chord changes and that the selected scale remains audible in fallback mode. Tests establish event-level harmony, not perceptual quality.
 
 ### Last verified Phase 3 composer-level intelligence
 
