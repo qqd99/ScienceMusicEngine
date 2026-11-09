@@ -718,7 +718,7 @@ export function generateComposition(mode: Mode, options: {
           velocity: 0.22 * arc * (0.86 + profile.mean * 0.18 + profile.movement * 0.1 + tension * 0.08), waveform: "triangle", pan: -0.08, voice: "bass"
         });
         events.push({
-          time: bassTime + 2 * beat, duration: 1.05 * beat, frequency: midiHz(chordRoot - 5),
+          time: bassTime + 2 * beat, duration: 1.05 * beat, frequency: midiHz(frame.chordMidi[2] - 24),
           velocity: 0.13 * arc * (0.86 + profile.mean * 0.18 + profile.movement * 0.1 + tension * 0.08), waveform: "triangle", pan: 0.08, voice: "bass"
         });
       }

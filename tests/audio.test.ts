@@ -99,15 +99,7 @@ describe("procedural instrument controls", () => {
         !(event.voice === "bass" && event.duration < composition.duration / (16 * 4))
       );
       expect(pitched.length).toBeGreaterThan(0);
-      const outside = pitched.filter(event => !allowed.includes(pitchClass(event.frequency)))
-        .map(event => ({
-          voice: event.voice,
-          time: Number(event.time.toFixed(3)),
-          midi: Math.round(69 + 12 * Math.log2(event.frequency / 440)),
-          relativePitchClass: pitchClass(event.frequency),
-          duration: Number(event.duration.toFixed(3))
-        }));
-      expect(outside).toEqual([]);
+      expect(pitched.every(event => allowed.includes(pitchClass(event.frequency)))).toBe(true);
     }
   });
   it("makes plucked responses land on chord tones from the active pad voicing", () => {
