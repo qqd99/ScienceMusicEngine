@@ -124,7 +124,18 @@ Preserve:
 - No AI music generation or downloaded audio samples.
 - Tests validate event-level relationships, not perceived musical quality; the user must audition white-key and black-key modes and all instrument layers.
 
-**Next action:** verify the exact commit's GitHub Actions run. Then ask the user to audition the white-key family in automatic mode, black-key family in automatic mode, and manual root/mode overrides. Listen specifically for the white-key B–F tension being intentional rather than accidental, and for every pitched accompaniment role to remain harmonically connected. Do not claim perceptual success from tests alone.
+**Next action:** ask the user to audition the white-key family in automatic mode, black-key family in automatic mode, and manual root/mode overrides. Listen specifically for the white-key B–F tension being intentional rather than accidental, and for every pitched accompaniment role to remain harmonically connected. Do not claim perceptual success from tests alone.
+
+### Last verified hybrid tonal-center and shared-improvisation implementation
+
+- Tonal inference and pentatonic scale support: `981f7ed70a35c4f074b317af9a14433ec218f46e` — “Add source-aware hybrid tonal inference”.
+- UI controls and automatic/manual readout: `cc0fa8549dcc368641ac71529e2faee6657930d0` — “Expose hybrid tonal controls in the lab”.
+- Focused tests, README and handoff update: `6b11f153ab4e7fe85c6c677f7b57a453182d347c` — “Test and document shared tonal improvisation”.
+- Scale-aware bass movement correction: `3b6c6136c889b7c2982f2454e391dd6f47904c85` — bass's second movement note now comes from the active chord frame rather than an out-of-collection fixed interval.
+- GitHub Actions run **#128** completed successfully: all **55 tests** passed (31 mathematics, 24 audio), the TypeScript/Vite production build passed, and GitHub Pages deployment succeeded.
+- The UI defaults to automatic tonal center and major/minor inference. Users can independently override the chromatic root and/or tonal character. White-key mode uses diatonic major/natural minor; black-key mode uses separate major/minor pentatonic scales.
+- The composition carries one resolved tonal context and shared chord frames. Piano, bass, pads, plucked answers and analog counterlines are checked against the same selected note collection. Bass approach notes remain intentionally chromatic transition notes; percussion is not a pitched role.
+- Event-level tests do not establish that the music sounds good. The user must audition the new automatic and manual modes.
 
 ### Last verified harmonic-cohesion correction
 
