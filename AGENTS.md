@@ -37,14 +37,14 @@ The Mathematics Lab currently contains four experiments:
 - **Chaos map:** logistic-map dynamics generate deterministic evolving values and musical events.
 - **Shepard illusion:** overlapping octave layers create the auditory illusion of continuous ascent. Preserve this experiment's special behavior; do not force it into the ordinary 16-bar song form.
 
-The browser UI includes mathematical visualization, a moving playhead, tempo, complexity, root-note, harmonic-color and seed controls, a unified Play/Stop control, live parameter updates, output volume, sound-character selection, independent feature/instrument controls, instrument mixer, and offline WAV export.
+The browser UI includes mathematical visualization, a moving playhead, tempo, complexity, hybrid tonal-center controls (automatic inference or manual chromatic root), white-key/diatonic and black-key/pentatonic collections, automatic or manually overridden major/minor character, a unified Play/Stop control, live parameter updates, output volume, sound-character selection, independent feature/instrument controls, instrument mixer, and offline WAV export.
 
 ### Musical form and sound system already implemented
 
 - The ordinary musical experiments use a **16-bar composition** with four connected four-bar movements: opening, development, climax, and reprise/cadence. At the default 128 BPM, the piece lasts about 30 seconds. The mathematical sequence shapes the opening motif, eight two-bar chord choices, development variations and climax contour; the reprise recalls the motif and resolves to the tonic.
 - The composition can include sequence-derived harmonic progressions selected to support the actual piano phrase, close-voiced chord inversions/voice leading, tension-aware chord colors and tonic cadence, scale-aware bass/pad/answer/texture parts sharing one harmonic map, source-shaped drums, and procedurally synthesized kick/snare/hi-hat percussion.
 - The five dedicated instrument layers are:
-  - **Piano:** carries the lead melody.
+  - **Piano:** carries the lead melody using the selected white-key/diatonic or black-key/pentatonic note collection and the shared tonal/harmonic context.
   - **Plucked Strings:** deterministic call-and-response answers between selected lead phrases.
   - **Warm Analog:** a restrained counterline / sustained color.
   - **Cinematic Bass:** supports harmonic roots and movement.
@@ -107,22 +107,24 @@ After editing:
 
 ## 6. Current handoff / resume point
 
-The user reported that not all instruments sounded harmonically connected to the piano. The concrete issue was that the chord progression was selected independently of the actual lead phrase, fallback pads used fixed major intervals regardless of the selected scale, and response notes could be selected from overlapping pad tails belonging to the previous chord.
+The user approved a hybrid tonal-center system and shared musical intelligence for white-key and black-key improvisation.
 
-The current harmonic-cohesion correction:
-- Chooses each source-approved two-bar chord by scoring how well its diatonic triad supports the actual piano phrase, with stronger weight on accented and sustained notes. The piano remains the mathematical lead; it is not forcibly rewritten to fit a disconnected accompaniment.
-- Publishes one shared eight-frame harmonic map (root, triad, color tone, start/end) on the composition. The arranged bass, pad voicings, plucked answers and analog counterlines all use that same map.
-- Makes supporting responses choose from the chord active at their entrance, including the incoming chord during a transition pickup, rather than sampling every overlapping pad note.
-- Makes fallback pads and bass use the same scale-aware chord frames instead of fixed major intervals or arbitrary lead-note transpositions.
-- Uses root/fifth bass support; percussion remains a rhythmic rather than pitched harmony role.
+Current implementation design:
+- **White-key family:** seven-note diatonic collection, with C major/A natural minor as the familiar white-key examples. Major/minor character is inferred from the mathematical source unless the user overrides it.
+- **Black-key family:** five-note pentatonic collection, with F-sharp major/D-sharp minor as the familiar black-key examples. Both major and minor pentatonic interval sets are implemented separately; the five-note collection avoids semitone and tritone intervals.
+- **Hybrid tonal center:** the source contour deterministically suggests a chromatic root and major/minor character. The user can independently lock the root (12 chromatic notes) and/or major/minor character.
+- The resolved tonal context (root, collection, mode and confidence) is stored on the composition alongside the shared harmonic frames.
+- Piano notes are constrained to the selected collection. Chord selection is melody-aware and includes a penalty for strong-note tritone clashes. Bass, pads, plucked answers and analog counterlines use the shared chord frames; percussion remains a rhythmic role.
+- Preserve legacy API behavior for callers that still supply root and scale without the new noteCollection options.
+- The Shepard experiment remains a continuous chromatic octave illusion, not an ordinary scale-constrained melody.
 
 Preserve:
-- Determinism for fixed mode, seed and controls; mathematics and the piano phrase remain the source of musical ideas.
-- The 16-bar/30-second four-movement form and the Shepard illusion's separate behavior.
-- Adaptive conductor behavior (at most two support roles per two-bar phrase), independent instrument toggles/mixer, live/offline event parity, and the +14 dB master chain.
+- Determinism for fixed mode, seed and controls; mathematics remains the source of musical ideas.
+- The 16-bar/30-second four-movement form, conductor's maximum two supporting roles per phrase, independent instrument toggles/mixer, live/offline event parity, and +14 dB master chain.
 - No AI music generation or downloaded audio samples.
+- Tests validate event-level relationships, not perceived musical quality; the user must audition white-key and black-key modes and all instrument layers.
 
-**Next action:** ask the user to audition piano with bass/pads, then add plucked and analog layers one at a time. Confirm the accompaniment now follows the piano's chord changes and that the selected scale remains audible in fallback mode. Tests establish event-level harmony, not perceptual quality.
+**Next action:** verify the exact commit's GitHub Actions run. Then ask the user to audition the white-key family in automatic mode, black-key family in automatic mode, and manual root/mode overrides. Listen specifically for the white-key B–F tension being intentional rather than accidental, and for every pitched accompaniment role to remain harmonically connected. Do not claim perceptual success from tests alone.
 
 ### Last verified harmonic-cohesion correction
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveHarmonicProgression, deriveMusicalMotif, euclideanPattern, generateComposition, logisticSequence, mandelbrotEscape, transformMusicalMotif } from "../src/math";
+import { deriveHarmonicProgression, deriveMusicalMotif, euclideanPattern, generateComposition, logisticSequence, mandelbrotEscape, resolveTonalCenter, transformMusicalMotif } from "../src/math";
 describe("mathematical generators", () => {
   it("distributes exactly k Euclidean pulses", () => {
     expect(euclideanPattern(5, 13).filter(Boolean)).toHaveLength(5);
@@ -25,6 +25,68 @@ describe("mathematical generators", () => {
     const a = generateComposition("euclidean", { seed: 0.1 });
     const b = generateComposition("euclidean", { seed: 0.8 });
     expect(a.values).not.toEqual(b.values);
+  });
+  it("infers deterministic major/minor tonal centers from source contours", () => {
+    const values = logisticSequence(0.314159, 3.91, 128);
+    for (const collection of ["white-key", "black-key"] as const) {
+      const first = resolveTonalCenter(values, collection, "auto", "auto", 0.314159);
+      const second = resolveTonalCenter(values, collection, "auto", "auto", 0.314159);
+      expect(first).toEqual(second);
+      expect(first.centerSource).toBe("automatic");
+      expect(first.modeSource).toBe("automatic");
+      expect(first.rootPitchClass).toBeGreaterThanOrEqual(0);
+      expect(first.rootPitchClass).toBeLessThan(12);
+      expect(collection === "white-key"
+        ? ["Major", "Minor"].includes(first.scale)
+        : ["Major Pentatonic", "Minor Pentatonic"].includes(first.scale)
+      ).toBe(true);
+    }
+  });
+  it("allows independent manual overrides of tonal center and major/minor character", () => {
+    const values = logisticSequence(0.271828, 3.88, 128);
+    const manualRoot = resolveTonalCenter(values, "black-key", 66, "auto");
+    expect(manualRoot.rootMidi).toBe(66);
+    expect(manualRoot.rootPitchClass).toBe(6);
+    expect(manualRoot.centerSource).toBe("manual");
+    expect(manualRoot.modeSource).toBe("automatic");
+    expect(["Major Pentatonic", "Minor Pentatonic"]).toContain(manualRoot.scale);
+
+    const manualMode = resolveTonalCenter(values, "white-key", "auto", "minor");
+    expect(manualMode.scale).toBe("Minor");
+    expect(manualMode.mode).toBe("minor");
+    expect(manualMode.centerSource).toBe("automatic");
+    expect(manualMode.modeSource).toBe("manual");
+  });
+  it("keeps piano notes inside the selected white-key or black-key note collection", () => {
+    const intervals: Record<string, number[]> = {
+      Major: [0, 2, 4, 5, 7, 9, 11],
+      Minor: [0, 2, 3, 5, 7, 8, 10],
+      "Major Pentatonic": [0, 2, 4, 7, 9],
+      "Minor Pentatonic": [0, 3, 5, 7, 10]
+    };
+    for (const collection of ["white-key", "black-key"] as const) {
+      const composition = generateComposition("chaos", {
+        seed: 0.314159, noteCollection: collection, tonalCenter: "auto",
+        tonalMode: "auto", musicalArrangement: true, musicalExpression: true
+      });
+      const tonal = composition.tonality!;
+      const allowed = intervals[tonal.scale];
+      const lead = composition.events.filter(event => event.voice === "lead");
+      expect(lead.length).toBeGreaterThan(0);
+      expect(lead.every(event => {
+        const midi = Math.round(69 + 12 * Math.log2(event.frequency / 440));
+        return allowed.includes(((midi - tonal.rootPitchClass) % 12 + 12) % 12);
+      })).toBe(true);
+      if (collection === "black-key") {
+        for (let i = 0; i < allowed.length; i++) {
+          for (let j = i + 1; j < allowed.length; j++) {
+            const distance = Math.min((allowed[j] - allowed[i] + 12) % 12, (allowed[i] - allowed[j] + 12) % 12);
+            expect(distance).not.toBe(1);
+            expect(distance).not.toBe(6);
+          }
+        }
+      }
+    }
   });
   it("extracts deterministic, seed-sensitive motifs from mathematical contours", () => {
     const seeds = [0.314159, 0.271828, 0.618034, 0.123456];
@@ -65,9 +127,9 @@ describe("mathematical generators", () => {
   });
   it("keeps sequence-derived harmony inside each selected scale", () => {
     const composition = generateComposition("chaos", { seed: 0.618034 });
-    for (const scale of ["Lydian", "Major", "Minor", "Pentatonic"]) {
+    for (const scale of ["Lydian", "Major", "Minor", "Pentatonic", "Major Pentatonic", "Minor Pentatonic"]) {
       const progression = deriveHarmonicProgression(composition.values, scale);
-      const scaleLength = scale === "Pentatonic" ? 5 : 7;
+      const scaleLength = scale.includes("Pentatonic") || scale === "Pentatonic" ? 5 : 7;
       expect(progression.every(degree => degree >= 0 && degree < scaleLength)).toBe(true);
       expect(progression[0]).toBe(0);
       expect(progression[7]).toBe(0);

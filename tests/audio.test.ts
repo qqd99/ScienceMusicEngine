@@ -75,6 +75,33 @@ describe("procedural instrument controls", () => {
     expect(first.some(event => event.voice === "pad")).toBe(true);
   });
 
+  it("keeps every pitched ensemble role inside the shared tonal collection", () => {
+    const intervals: Record<string, number[]> = {
+      Major: [0, 2, 4, 5, 7, 9, 11],
+      Minor: [0, 2, 3, 5, 7, 8, 10],
+      "Major Pentatonic": [0, 2, 4, 7, 9],
+      "Minor Pentatonic": [0, 3, 5, 7, 10]
+    };
+    for (const collection of ["white-key", "black-key"] as const) {
+      const composition = generateComposition("chaos", {
+        seed: 0.618034, noteCollection: collection, tonalCenter: "auto",
+        tonalMode: "auto", musicalArrangement: true, musicalExpression: true
+      });
+      const resolved = resolveInstrumentEvents(composition, {
+        piano: true, analog: true, plucked: true, cinematicBass: true, atmosphere: true
+      });
+      const tonal = composition.tonality!;
+      const allowed = intervals[tonal.scale];
+      const pitchClass = (frequency: number) =>
+        ((Math.round(69 + 12 * Math.log2(frequency / 440)) - tonal.rootPitchClass) % 12 + 12) % 12;
+      const pitched = resolved.filter(event =>
+        ["lead", "answer", "texture", "pad", "bass"].includes(event.voice ?? "lead") &&
+        !(event.voice === "bass" && event.duration < composition.duration / (16 * 4))
+      );
+      expect(pitched.length).toBeGreaterThan(0);
+      expect(pitched.every(event => allowed.includes(pitchClass(event.frequency)))).toBe(true);
+    }
+  });
   it("makes plucked responses land on chord tones from the active pad voicing", () => {
     const composition = generateComposition("mandelbrot", {
       seed: 0.314159, musicalArrangement: true, musicalExpression: true

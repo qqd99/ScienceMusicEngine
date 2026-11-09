@@ -17,13 +17,13 @@ After GitHub Pages is enabled with **Settings → Pages → Source: GitHub Actio
 
 ## Composition and orchestration
 
-Ordinary musical experiments use a deterministic **16-bar form** with four connected movements: opening, development, climax, and reprise/cadence. At the default 128 BPM, the piece lasts approximately **30 seconds**. The opening four-note identity is extracted from the mathematical contour, then developed through diatonic inversion, retrograde and sequence before returning in the reprise. A whole-sequence phase signature makes cyclic sources such as Euclidean rhythms produce different harmonic journeys from different seeds. Harmonic color follows a tension arc: an open add-9 opening, richer extensions as the source becomes more active, dominant preparation, and a stable tonic resolution. Each two-bar chord is selected from the mathematical source's harmonic palette and then checked against the piano phrase it must support. Bass roots and fifths, scale-aware pad voicings, plucked answers and analog counterlines all draw from the same active chord frame; transitions use the incoming chord rather than stale overlapping pad notes. Drum accents respond to source activity. Melodic pickups and pad releases connect the movements.
+Ordinary musical experiments use a deterministic **16-bar form** with four connected movements: opening, development, climax, and reprise/cadence. The shared Musical Intelligence layer supports a seven-note diatonic family (the white-key analogy) and five-note major/minor pentatonic families (the black-key analogy). Tonal center and major/minor character are inferred deterministically from the mathematical source by default; users can independently lock the root and/or mode. The piano, bass, pads, plucked answers and analog counterline share the resolved tonal context and chord frames, while each keeps its own musical role. At the default 128 BPM, the piece lasts approximately **30 seconds**. The opening four-note identity is extracted from the mathematical contour, then developed through diatonic inversion, retrograde and sequence before returning in the reprise. A whole-sequence phase signature makes cyclic sources such as Euclidean rhythms produce different harmonic journeys from different seeds. Harmonic color follows a tension arc: an open add-9 opening, richer extensions as the source becomes more active, dominant preparation, and a stable tonic resolution. Each two-bar chord is selected from the mathematical source's harmonic palette and then checked against the piano phrase it must support. Bass roots and fifths, scale-aware pad voicings, plucked answers and analog counterlines all draw from the same active chord frame; transitions use the incoming chord rather than stale overlapping pad notes. Drum accents respond to source activity. Melodic pickups and pad releases connect the movements.
 
 **Musical Arrangement** derives its eight-chord progression from the mathematical sequence, then selects the best-fitting source-approved chord for the actual piano phrase. The same shared chord frames drive voice-led voicings, bass movement, supporting answers and source-shaped percussion. **Musical Expression** develops a four-note mathematical motif through inversion, retrograde and sequence, then shapes tension, dynamics, rests and cadence around it. These features have independent ON/OFF controls.
 
 The five independently switchable and mixable instrument layers are:
 
-- **Piano:** carries the mathematical lead melody.
+- **Piano:** carries the mathematical lead melody, using scale-constrained improvisation, motif development and stronger-beat harmonic awareness.
 - **Cinematic Bass:** marks selected harmonic roots and transitions.
 - **Atmospheric Pads:** sustain selected chord voicings to frame the opening and resolution.
 - **Plucked Strings:** answer the lead only in genuine rhythmic gaps.
@@ -74,7 +74,9 @@ npm run build
 
 ## Design principles
 
-- Mathematical generators are pure functions and deterministic for a fixed input.
+- Mathematical generators and automatic tonal-center inference are pure functions and deterministic for a fixed input.
+- The shared musical context exposes the selected note collection, root, mode and chord frames to every pitched instrument.
+- White-key/diatonic improvisation can use deliberate tension; black-key/pentatonic improvisation avoids semitone and tritone intervals by construction.
 - Mathematical behavior meaningfully influences pitch, rhythm, contour and density.
 - Audio is synthesized in-browser with oscillators and envelopes.
 - Playback starts only after the user presses Play.
