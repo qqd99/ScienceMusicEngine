@@ -19,6 +19,18 @@ export interface HarmonicFrame {
   chordMidi: number[];
   colorMidi: number;
 }
+export type NoteCollection = "white-key" | "black-key";
+export type TonalModeChoice = "auto" | "major" | "minor";
+export interface TonalContext {
+  rootMidi: number;
+  rootPitchClass: number;
+  scale: string;
+  collection: NoteCollection | "legacy";
+  mode: "major" | "minor" | "lydian" | "pentatonic";
+  centerSource: "automatic" | "manual";
+  modeSource: "automatic" | "manual";
+  confidence: number;
+}
 export interface Composition {
   events: NoteEvent[];
   duration: number;
@@ -28,21 +40,117 @@ export interface Composition {
   musicalArrangement: boolean;
   musicalExpression: boolean;
   harmony?: HarmonicFrame[];
+  tonality?: TonalContext;
 }
 const SCALES: Record<string, number[]> = {
   "Lydian": [0, 2, 4, 6, 7, 9, 11],
   "Major": [0, 2, 4, 5, 7, 9, 11],
   "Minor": [0, 2, 3, 5, 7, 8, 10],
-  "Pentatonic": [0, 2, 4, 7, 9]
+  "Pentatonic": [0, 2, 4, 7, 9],
+  "Major Pentatonic": [0, 2, 4, 7, 9],
+  "Minor Pentatonic": [0, 3, 5, 7, 10]
 };
 const HARMONY_PALETTES: Record<string, number[][]> = {
   "Minor": [[0], [5, 3, 1], [3, 6, 2], [2, 4, 4], [0, 5, 3], [5, 3, 1], [4, 4, 6], [0]],
   "Pentatonic": [[0], [3, 2, 1], [2, 4, 3], [4, 2, 4], [0, 2, 3], [3, 1, 2], [4, 4, 3], [0]],
+  "Major Pentatonic": [[0], [3, 2, 1], [2, 4, 3], [4, 2, 4], [0, 2, 3], [3, 1, 2], [4, 4, 3], [0]],
+  "Minor Pentatonic": [[0], [3, 1, 4], [2, 4, 1], [1, 3, 4], [0, 2, 3], [3, 1, 2], [4, 2, 3], [0]],
   "Major": [[0], [5, 3, 1], [2, 5, 1], [2, 4, 4], [0, 5, 2], [3, 5, 1], [4, 4, 6], [0]],
   "Lydian": [[0], [5, 3, 1], [2, 5, 1], [2, 4, 4], [0, 5, 2], [3, 5, 1], [4, 4, 6], [0]]
 };
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const midiHz = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
+const pitchClass = (midi: number) => ((Math.round(midi) % 12) + 12) % 12;
+function chordToneIndices(scale: string): number[] {
+  if (scale === "Major Pentatonic" || scale === "Pentatonic") return [0, 2, 3];
+  if (scale === "Minor Pentatonic") return [0, 1, 3];
+  return [0, 2, 4];
+}
+
+function scoreTonalCandidate(values: readonly number[], rootPitchClass: number, scale: string): number {
+  const intervals = SCALES[scale] ?? SCALES.Lydian;
+  const third = scale.includes("Minor") ? 3 : 4;
+  const source = values.length ? values : [0.5];
+  let score = 0;
+  let totalWeight = 0;
+  for (let index = 0; index < source.length; index++) {
+    const value = clamp(source[index], 0, 1);
+    const previous = index > 0 ? clamp(source[index - 1], 0, 1) : value;
+    const contour = clamp(0.5 + (value - previous) * 1.5, 0, 1);
+    const beatPhase = (index % 8) / 7;
+    const sourcePitch = Math.round(value * 6.5 + contour * 2.5 + beatPhase * 2.8);
+    const relative = ((sourcePitch - rootPitchClass) % 12 + 12) % 12;
+    const weight = 1 + (index % 8 === 0 ? 0.35 : 0) +
+      Math.min(1, Math.abs(value - previous) * 2) * 0.2;
+    score += weight * (intervals.includes(relative) ? 1 : -0.85);
+    if (relative === 0) score += weight * 0.12;
+    if (relative === third) score += weight * 0.1;
+    if (relative === 7) score += weight * 0.08;
+    totalWeight += weight;
+  }
+  return score / Math.max(1, totalWeight);
+}
+
+/** Infer a deterministic tonal center while allowing independent root/mode overrides. */
+export function resolveTonalCenter(
+  values: readonly number[],
+  collection: NoteCollection,
+  requestedCenter: number | "auto" = "auto",
+  requestedMode: TonalModeChoice = "auto",
+  seed = 0.314159
+): TonalContext {
+  const scaleNames = collection === "white-key"
+    ? { major: "Major", minor: "Minor" }
+    : { major: "Major Pentatonic", minor: "Minor Pentatonic" };
+  const roots = requestedCenter === "auto"
+    ? Array.from({ length: 12 }, (_, index) => index)
+    : [pitchClass(requestedCenter)];
+  const modes = requestedMode === "auto"
+    ? (["major", "minor"] as const)
+    : ([requestedMode] as const);
+  const candidates = roots.flatMap(root => modes.map(mode => ({
+    root, mode, scale: scaleNames[mode],
+    score: scoreTonalCandidate(values, root, scaleNames[mode])
+  })));
+  const source = values.length ? values : [0.5];
+  const mean = source.reduce((sum, value) => sum + clamp(value, 0, 1), 0) / source.length;
+  const preferredRoot = pitchClass(Math.floor((mean * 0.57 + ((seed % 1 + 1) % 1) * 0.43) * 12));
+  candidates.forEach(candidate => {
+    const distance = Math.min(
+      (candidate.root - preferredRoot + 12) % 12,
+      (preferredRoot - candidate.root + 12) % 12
+    );
+    candidate.score += (6 - distance) * 0.0001;
+  });
+  candidates.sort((a, b) => b.score - a.score || a.root - b.root ||
+    (a.mode === "major" ? -1 : 1));
+  const winner = candidates[0];
+  const confidence = candidates.length > 1
+    ? clamp(winner.score - candidates[1].score, 0, 1)
+    : 1;
+  return {
+    rootMidi: requestedCenter === "auto" ? 60 + winner.root : requestedCenter,
+    rootPitchClass: winner.root,
+    scale: winner.scale,
+    collection,
+    mode: winner.mode,
+    centerSource: requestedCenter === "auto" ? "automatic" : "manual",
+    modeSource: requestedMode === "auto" ? "automatic" : "manual",
+    confidence
+  };
+}
+
+function legacyTonalContext(root: number, scale: string): TonalContext {
+  const mode = scale === "Minor" || scale === "Minor Pentatonic"
+    ? "minor"
+    : scale === "Lydian" ? "lydian"
+      : scale.includes("Pentatonic") || scale === "Pentatonic" ? "pentatonic" : "major";
+  return {
+    rootMidi: root, rootPitchClass: pitchClass(root), scale, collection: "legacy", mode,
+    centerSource: "manual", modeSource: "manual", confidence: 1
+  };
+}
+
 function scaleNote(value: number, root: number, scale: string): number {
   const notes = SCALES[scale] ?? SCALES.Lydian;
   const degree = Math.floor(clamp(value, 0, 0.9999) * notes.length * 2);
@@ -139,17 +247,20 @@ function alignHarmonicProgressionToLead(
     const candidates = [...new Set(palette[section] ?? [preferredDegree])];
 
     const score = (degree: number) => {
-      const chord = [0, 2, 4].map(offset => {
+      const chord = chordToneIndices(scale).map(offset => {
         const index = degree + offset;
         return (root + scaleNotes[index % scaleNotes.length] +
           Math.floor(index / scaleNotes.length) * 12) % 12;
       });
       const fit = weightedNotes.reduce((sum, note) => {
-        const distance = Math.min(...chord.map(tone => {
+        const distances = chord.map(tone => {
           const interval = Math.abs(note.pitchClass - tone);
           return Math.min(interval, 12 - interval);
-        }));
-        return sum + note.weight * (distance === 0 ? 1 : distance <= 2 ? 0.3 : 0);
+        });
+        const distance = Math.min(...distances);
+        const tritoneClash = distances.includes(6);
+        return sum + note.weight * (distance === 0 ? 1 : distance <= 2 ? 0.3 : 0) -
+          note.weight * (tritoneClash ? 0.22 : 0);
       }, 0) / totalWeight;
       const sourcePreference = degree === preferredDegree ? 0.12 : 0;
       return fit + sourcePreference;
@@ -247,10 +358,9 @@ export function logisticSequence(seed: number, r: number, count: number): number
 export function generateComposition(mode: Mode, options: {
   bpm?: number; root?: number; scale?: string; complexity?: number; seed?: number;
   richInstruments?: boolean; musicalArrangement?: boolean; musicalExpression?: boolean;
+  noteCollection?: NoteCollection; tonalCenter?: number | "auto"; tonalMode?: TonalModeChoice;
 } = {}): Composition {
   const bpm = clamp(options.bpm ?? 128, 45, 180);
-  const root = options.root ?? 60;
-  const scale = options.scale ?? "Lydian";
   const complexity = clamp(options.complexity ?? 0.55, 0.1, 1);
   const seed = options.seed ?? 0.314159;
   const richInstruments = options.richInstruments ?? true;
@@ -260,8 +370,43 @@ export function generateComposition(mode: Mode, options: {
   const bars = COMPOSITION_BARS;
   const steps = bars * 8;
   const duration = bars * 4 * beat;
-  const events: NoteEvent[] = [];
+
+  // Build the mathematical source first so tonal inference responds to its
+  // actual contour, rather than to a random note generator or UI defaults.
   const values: number[] = [];
+  const mandelbrotEscapes: number[] = [];
+  const maxIterations = Math.round(24 + complexity * 176);
+  if (mode === "euclidean") {
+    const pulses = Math.round(steps * (0.08 + complexity * 0.42));
+    const rotation = Math.floor(seed * 10_007) % steps;
+    values.push(...euclideanPattern(pulses, steps, rotation).map(hit => hit ? 1 : 0));
+  } else if (mode === "chaos") {
+    values.push(...logisticSequence(seed, 3.72 + complexity * 0.27, steps));
+  } else if (mode === "mandelbrot") {
+    const seedPhase = ((Math.floor(seed * 1_000_003) % 10_007) / 10_007) * Math.PI * 2;
+    const xShift = Math.sin(seedPhase) * 0.22;
+    const yCenter = Math.cos(seedPhase * 1.37) * 0.24;
+    const sweep = 0.035 + complexity * 0.23;
+    for (let i = 0; i < steps; i++) {
+      const t = i / (steps - 1);
+      const x = -1.95 + t * 2.65 + xShift;
+      const y = yCenter + Math.sin(t * Math.PI * (1.5 + complexity * 2.5) + seedPhase) * sweep;
+      const escape = mandelbrotEscape(x, y, maxIterations);
+      mandelbrotEscapes.push(escape);
+      values.push(escape / maxIterations);
+    }
+  } else {
+    for (let i = 0; i < steps; i++) values.push(i / steps);
+  }
+
+  const tonalCenterChoice = options.tonalCenter ?? options.root ?? 60;
+  const tonality = options.noteCollection
+    ? resolveTonalCenter(values, options.noteCollection, tonalCenterChoice, options.tonalMode ?? "auto", seed)
+    : legacyTonalContext(options.root ?? 60, options.scale ?? "Lydian");
+  const root = tonality.rootMidi;
+  const scale = tonality.scale;
+  const scaleNotes = SCALES[scale] ?? SCALES.Lydian;
+  const events: NoteEvent[] = [];
   const add = (step: number, value: number, velocity = 0.35, length = 0.42, wave: OscillatorType = "sine") => {
     const note = scaleNote(value, root, scale);
     const beatInBar = step % 8;
@@ -275,42 +420,25 @@ export function generateComposition(mode: Mode, options: {
   if (mode === "euclidean") {
     const pulses = Math.round(steps * (0.08 + complexity * 0.42));
     const rotation = Math.floor(seed * 10_007) % steps;
-    const pattern = euclideanPattern(pulses, steps, rotation);
-    pattern.forEach((hit, i) => {
-      values.push(hit ? 1 : 0);
+    euclideanPattern(pulses, steps, rotation).forEach((hit, i) => {
       if (hit) {
         add(i, (i % 8 === 0 ? 0.88 : 0.18 + ((i * 7) % 11) / 16), i % 8 === 0 ? 0.72 : 0.34, 0.28, i % 8 === 0 ? "triangle" : "sine");
       }
     });
   } else if (mode === "chaos") {
-    const sequence = logisticSequence(seed, 3.72 + complexity * 0.27, steps);
-    sequence.forEach((v, i) => { values.push(v); add(i, v, 0.2 + v * 0.38, 0.55, "triangle"); });
+    values.forEach((value, i) => add(i, value, 0.2 + value * 0.38, 0.55, "triangle"));
   } else if (mode === "mandelbrot") {
-    // Complexity controls iteration depth and the vertical sweep through the set.
-    // Seed controls the deterministic path through the complex plane.
-    const maxIterations = Math.round(24 + complexity * 176);
-    const seedPhase = ((Math.floor(seed * 1_000_003) % 10_007) / 10_007) * Math.PI * 2;
-    const xShift = Math.sin(seedPhase) * 0.22;
-    const yCenter = Math.cos(seedPhase * 1.37) * 0.24;
-    const sweep = 0.035 + complexity * 0.23;
-    for (let i = 0; i < steps; i++) {
-      const t = i / (steps - 1);
-      // Traverse a horizontal slice near the interesting cardioid/bulb boundary,
-      // with a seeded, gentle vertical modulation so seeds alter the sampled path.
-      const x = -1.95 + t * 2.65 + xShift;
-      const y = yCenter + Math.sin(t * Math.PI * (1.5 + complexity * 2.5) + seedPhase) * sweep;
-      const escape = mandelbrotEscape(x, y, maxIterations);
-      const value = escape / maxIterations;
-      values.push(value);
+    mandelbrotEscapes.forEach((escape, i) => {
+      const value = values[i];
       if (escape < maxIterations || i % Math.max(1, Math.round(7 - complexity * 5)) === 0) {
         add(i, value, 0.18 + value * 0.42, 0.7, "sine");
       }
-    }
+    });
   } else {
-    // A Shepard illusion: overlapping octave layers rise while their envelopes crossfade.
+    // Shepard remains a continuous, chromatic octave illusion, not a
+    // scale-constrained melody or ordinary ensemble arrangement.
     for (let i = 0; i < steps; i++) {
       const phase = i / steps;
-      values.push(phase);
       const seedOffset = (seed % 1 + 1) % 1;
       for (let layer = 0; layer < 3; layer++) {
         const octavePosition = (phase * 2 + layer / 3 + seedOffset) % 1;
@@ -324,7 +452,6 @@ export function generateComposition(mode: Mode, options: {
   // A recognizable four-note motif now unfolds over four connected
   // four-bar movements: statement, development, climax, and reprise/cadence.
   // The final bar of each movement contains a pickup into the next movement.
-  const scaleNotes = SCALES[scale] ?? SCALES.Lydian;
   let chordProgression = deriveHarmonicProgression(values, scale);
   const source = values.length ? values : Array.from({ length: steps }, (_, i) => i / steps);
 
@@ -475,7 +602,7 @@ export function generateComposition(mode: Mode, options: {
       : section === 7 ? 0
         : scaleNotes.length >= 7 && tension >= 0.55 ? 6 : 4;
     const colorIndex = degree + colorOffset;
-    const chordMidi = [0, 2, 4].map(offset => {
+    const chordMidi = chordToneIndices(scale).map(offset => {
       const index = degree + offset;
       return root + 12 + scaleNotes[index % scaleNotes.length] +
         Math.floor(index / scaleNotes.length) * 12;
@@ -531,7 +658,7 @@ export function generateComposition(mode: Mode, options: {
     ];
     const chordLevels = [0.42, 0.5, 0.58, 0.68, 0.82, 1.0, 0.72, 0.38];
     const chordRoots: number[] = [];
-    let previousVoicing = [root + 12, root + 16, root + 19];
+    let previousVoicing = [...harmony[0].chordMidi];
 
     for (let section = 0; section < 8; section++) {
       const profile = analyzeSequenceSection(values, section);
@@ -540,7 +667,7 @@ export function generateComposition(mode: Mode, options: {
       const chordRoot = frame.rootMidi;
       chordRoots.push(chordRoot);
       const triad = frame.chordMidi;
-      const previous = section === 0 ? [root + 12, root + 16, root + 19] : previousVoicing;
+      const previous = section === 0 ? [...harmony[0].chordMidi] : previousVoicing;
       const candidates = [0, 1, 2].map(inversion => {
         const rotated = [...triad.slice(inversion), ...triad.slice(0, inversion).map(note => note + 12)];
         return rotated.map((note, voice) => {
@@ -679,5 +806,5 @@ export function generateComposition(mode: Mode, options: {
     }
   }
   events.sort((a, b) => a.time - b.time);
-  return { events, duration, values, label: mode, richInstruments, musicalArrangement, musicalExpression, harmony };
+  return { events, duration, values, label: mode, richInstruments, musicalArrangement, musicalExpression, harmony, tonality };
 }
