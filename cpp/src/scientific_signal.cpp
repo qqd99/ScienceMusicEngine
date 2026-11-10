@@ -7,6 +7,7 @@ namespace science_music { namespace {
 constexpr std::size_t kMaxChannels=32, kMaxSamples=1000000;
 constexpr std::uint32_t kMaxFrames=256;
 constexpr double kEpsilon=1e-12, kPeriodThreshold=0.30;
+constexpr std::size_t kMaximumPeriodLag=32768, kCorrelationSamples=2048;
 double mean(const std::vector<double>& x) {
     return x.empty()?0.0:std::accumulate(x.begin(),x.end(),0.0)/x.size();
 }
@@ -42,7 +43,8 @@ double correlation(const std::vector<double>& a,const std::vector<double>& b,int
     const std::size_t overlap=n-std::max(sa,sb);
     if(overlap<2) return 0.0;
     double dot=0.0, ea=0.0, eb=0.0;
-    for(std::size_t i=0;i<overlap;++i) {
+    const std::size_t step=std::max<std::size_t>(1,(overlap+kCorrelationSamples-1)/kCorrelationSamples);
+    for(std::size_t i=0;i<overlap;i+=step) {
         const double x=a[sa+i], y=b[sb+i];
         dot+=x*y; ea+=x*x; eb+=y*y;
     }
@@ -51,12 +53,14 @@ double correlation(const std::vector<double>& a,const std::vector<double>& b,int
 }
 std::pair<std::uint32_t,double> period_of(const std::vector<double>& x) {
     if(x.size()<6) return {0,0.0};
-    const std::size_t maxLag=x.size()/2;
+    const std::size_t maxLag=std::min(x.size()/2,kMaximumPeriodLag);
     if(maxLag<3) return {0,0.0};
     std::vector<double> corr(maxLag+2,0.0);
     for(std::size_t lag=1;lag<=maxLag;++lag) {
         double dot=0.0,ea=0.0,eb=0.0;
-        for(std::size_t i=0;i+lag<x.size();++i) {
+        const std::size_t overlap=x.size()-lag;
+        const std::size_t step=std::max<std::size_t>(1,(overlap+kCorrelationSamples-1)/kCorrelationSamples);
+        for(std::size_t i=0;i<overlap;i+=step) {
             const double a=x[i],b=x[i+lag]; dot+=a*b;ea+=a*a;eb+=b*b;
         }
         const double den=std::sqrt(ea*eb);
@@ -121,7 +125,8 @@ SignalRelationship relate(const std::vector<double>& x,const std::vector<double>
     if(std::abs(pa-pb)>std::max(2.0,period*0.05))return out;
     const int radius=std::max(1,static_cast<int>(std::lround(period*0.5)));
     double best=-1.0;int bestLag=0;
-    for(int lag=-radius;lag<=radius;++lag) {
+    const int lagStep=std::max(1,static_cast<int>(std::lround(period/180.0)));
+    for(int lag=-radius;lag<=radius;lag+=lagStep) {
         const double c=correlation(dx,dy,lag);
         if(c>best){best=c;bestLag=lag;}
     }

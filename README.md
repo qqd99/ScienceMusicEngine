@@ -44,6 +44,14 @@ The conductor is an **adaptive, score-aware system**, not a fixed instrument sch
 
 Live playback prepares each upcoming phrase just ahead of its entrance. Offline WAV rendering walks the same deterministic conductor session from beginning to end, preserving exact event parity. Identical composition, seed and instrument settings produce identical decisions. Disabling the conductor bypasses its orchestration.
 
+## Scientific Signal Layer (v1.1)
+
+A reusable C++17 signal-analysis module now sits between scientific source data and musical/visual interpretation. It accepts one or more synchronized channels, an optional physical sample rate, and a requested number of timeline windows. The analysis reports mean, range, RMS, trend, activity, zero-crossing rate, dominant period, periodicity confidence, and physical frequency when a sample clock is known. Multi-channel analysis also estimates pairwise correlation and phase offset when both channels have a sufficiently clear shared period.
+
+The packed C ABI and WebAssembly adapter return channel summaries, time-normalized feature frames, and pairwise relationships. The browser displays the current mathematical source's mean, RMS, activity and period, plus a window-activity envelope aligned to the same normalized playhead used by playback. The C++ musical-intelligence phrase profiles reuse this analyzer's RMS and activity measurements, so conductor analysis and the visual signal track share one feature definition.
+
+The current Mathematics Lab supplies one normalized mathematical channel with no physical sample clock. It therefore reports periods in sample steps and deliberately does **not** invent a frequency in Hz. The multi-channel API is ready for future physical models (for example, three-phase electrical signals), but no power-grid or other new science experiment has been added yet.
+
 ## C++ Musical Intelligence Core (v1.0)
 
 The repository now also contains a standalone **C++17 composition-intelligence library** in `cpp/`. It accepts normalized mathematical source values and produces a deterministic symbolic score; it does not synthesize waveforms or replace the existing browser engine yet.

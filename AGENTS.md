@@ -59,6 +59,14 @@ The browser UI includes mathematical visualization, a moving playhead, tempo, co
 - Plucked answers and analog counterlines must fit genuine lead gaps and compete for the same melodic space. Bass marks selected harmonic anchors; pads frame harmony when space allows; percussion responds to phrase energy and yields downbeats already owned by bass.
 - Live playback prepares the next phrase just ahead of its entrance. Offline WAV rendering walks the same deterministic phrase session from beginning to end. Preserve exact live/offline event parity and the Shepard experiment's continuous layered illusion.
 
+### Scientific signal and synchronized timeline layer
+
+- The shared C++17 `ScientificSignalAnalyzer` accepts 1–32 synchronized channels with equal sample counts and an optional physical sample rate. It returns per-channel mean/range/RMS/trend/activity/zero-crossing metrics, dominant period and periodicity confidence, plus physical frequency only when the sample clock is supplied.
+- It divides each channel into normalized timeline frames and estimates pairwise correlation/phase relationships when channels share a stable period. The packed C ABI is additive and does not change the existing score ABI.
+- The current Mathematics Lab sends its normalized mathematical sequence as one channel with an unknown physical sample rate. The UI shows mean, RMS, activity and period in sample steps, and draws a feature envelope over the same normalized timeline as the audio playhead. It must not label mathematical iteration rate as physical Hz.
+- The C++ musical-intelligence phrase profiles reuse the same analyzer for RMS and activity. The TypeScript score remains the production audio generator; the signal-analysis overlay uses the C++/WASM analyzer. Future science domains can supply multiple channels and physical units without changing the timeline contract.
+- Multi-channel three-phase test data validates 60 Hz recovery at 48 kHz and phase relationships of approximately ±120 degrees. These are algorithm tests, not a new power-grid experiment or a claim about the uploaded video's full soundtrack.
+
 ### Critical instrument-routing behavior
 
 - If **one or more dedicated instruments are enabled**, the legacy/default oscillator must be bypassed. Do not let it play underneath dedicated instruments.
@@ -71,9 +79,12 @@ The browser UI includes mathematical visualization, a moving playhead, tempo, co
 ## 4. Code map
 
 - `src/math.ts` — current browser-side pure mathematical generators and deterministic composition generation. Main entry point: `generateComposition()`.
+- `cpp/include/science_music/scientific_signal.hpp` and `cpp/src/scientific_signal.cpp` — domain-neutral multi-channel scientific signal analysis, including periodicity, physical frequency when sample rate is known, time-window features and phase relationships.
+- `cpp/include/science_music/scientific_signal_c.h` and `cpp/src/scientific_signal_c.cpp` — packed C ABI for signal summaries, normalized timeline frames and channel-pair relationships.
+- `src/science/signal.ts` — typed browser representation and pure packed-ABI mapping for scientific signal analysis.
 - `cpp/include/science_music/intelligence.hpp` and `cpp/src/intelligence.cpp` — standalone C++17 musical-intelligence API and implementation: tonal inference, motif development, harmony, phrase analysis, and conductor decisions.
 - `cpp/include/science_music/intelligence_c.h` and `cpp/src/c_api.cpp` — two-pass struct C ABI plus a packed-array C ABI for WebAssembly; both preserve caller-owned output buffers and deterministic error codes.
-- `src/wasm/bridge.ts` — opt-in Emscripten loader, safe linear-memory ownership, and MIDI/beat-to-browser-event conversion.
+- `src/wasm/bridge.ts` — Emscripten loader, safe linear-memory ownership, MIDI/beat-to-browser-event conversion, and C++ scientific-signal analysis.
 - `scripts/build-wasm.sh` and `scripts/test-wasm.mjs` — Emscripten build and native-versus-WASM event parity check.
 - `cpp/examples/generate_demo.cpp` — deterministic logistic-source CLI example that writes a symbolic score CSV.
 - `cpp/tests/intelligence_test.cpp` and `cpp/CMakeLists.txt` — native tests and CMake build.
@@ -121,7 +132,7 @@ After editing:
 
 ## 6. Current handoff / resume point
 
-### Current C++ musical-intelligence module
+### Current C++ scientific signal and musical-intelligence modules
 
 The user requested the next Generative Music Engine milestone to prioritize **musical intelligence** and use **C++**. A standalone, portable C++17 module has been added under `cpp/`.
 
@@ -153,12 +164,21 @@ The user requested the next Generative Music Engine milestone to prioritize **mu
 - Example source: logistic map, seed 42, black-key family, automatic mode. Example chord path: `0-1-4-1-3-1-4-0`.
 - The native core is symbolic only and does not render audio. The deployed browser application still uses its existing TypeScript/Web Audio implementation; the C++ module is not yet connected to the live UI.
 
-**Current next action:** use the opt-in A/B engine selector in the app to audition the same mathematical source through the TypeScript and C++/WASM engines. Both use the same Web Audio synthesizer and WAV renderer, with identical tempo, tonal controls, instrument switches, sound profile and mixer. Ask the user to compare both outputs; do not switch the production default until the listening test is complete and the user approves the rollout.
+**Current next action:** ask the user to inspect the new signal-analysis panel and listen to the existing mathematical experiments. Confirm that the activity envelope and playhead feel synchronized and that the displayed period metrics are meaningful. Keep the TypeScript music engine as the production default. Do not add a physical-science experiment or infer scientific model parameters until the user supplies/approves the source equations, units and assumptions.
 
-### Experimental WebAssembly bridge (opt-in A/B audition; not the production default)
+
+### Scientific signal analysis implementation
+
+- Development branch: `feat/scientific-signal-timeline`.
+- New C++ API: `ScientificSignalAnalyzer` accepts synchronized multi-channel samples and returns signal summaries, windowed feature frames, and pairwise phase/correlation estimates.
+- The C++ musical-intelligence `SourceProfile` now reuses the analyzer's RMS, activity, zero-crossing, period and periodicity features.
+- The browser maps the packed C ABI into typed signal analysis and draws a window-activity envelope aligned to the audio playhead. The current math experiments are a single normalized channel with unknown physical sample rate, so no Hz is fabricated.
+- C++ tests use a deterministic 60 Hz, 48 kHz three-phase signal to check period and ±120-degree phase recovery, C ABI buffer ownership, no-clock behavior, invalid input handling, and reuse of features by the conductor.
+
+### Experimental WebAssembly bridge (opt-in score audition; TypeScript remains the production default)
 
 - Implementation branch `feat/wasm-bridge` was merged through pull request https://github.com/qqd99/ScienceMusicEngine/pull/1. The merged main commit is `622767213e5f3dba8b153002b1a4278f8d1d62e5`.
-- GitHub Actions run #140 passed on the audition UI commit: TypeScript tests, native C++ build/CTest, native CLI smoke test, Emscripten build, native/WASM event parity, and Vite production build all passed. After merge, the main-branch build and GitHub Pages deployment completed successfully.
+- Main baseline before the scientific-signal branch: commit `bfea7b1067278d713993fb05fda403540ff89de8`; GitHub Actions run #143 completed successfully. The scientific-signal branch adds a second native CTest target and a three-phase C++/WASM parity smoke test; verify its exact pull-request run before merging.
 - The packed entry point is declared in intelligence_c.h as sme_generate_score_packed. Its options are a fixed 11-word uint32 array; event records are eight doubles and tonal metadata is seven doubles. This avoids JavaScript depending on wasm32 C struct padding.
 - The C++ C ABI remains caller-buffer-owned. JavaScript allocates source, options, count, tonal metadata and event buffers with _malloc, checks status codes, copies all returned values into JS-owned arrays, then releases every pointer in a finally block. The module retains no JS buffers.
 - Emscripten builds a modularized ES module and companion .wasm file into public/wasm. Generated artifacts are ignored and are created by scripts/build-wasm.sh.

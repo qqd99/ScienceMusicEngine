@@ -136,6 +136,64 @@ try {
     "Native/WebAssembly event parity passed for " + eventCount +
     " events (seed 42, 128 BPM, black-key, automatic tonality)."
   );
+  // Exercise the shared scientific signal ABI with a three-phase 60 Hz source.
+  const sampleRate = 48000;
+  const signalSampleCount = 4800;
+  const signalChannelCount = 3;
+  const signalFrameCount = 16;
+  const signalInput = new Float64Array(signalSampleCount * signalChannelCount);
+  for (let channel = 0; channel < signalChannelCount; channel += 1) {
+    const phase = channel === 0 ? 0 : channel === 1 ? -2 * Math.PI / 3 : 2 * Math.PI / 3;
+    for (let index = 0; index < signalSampleCount; index += 1) {
+      const time = index / sampleRate;
+      signalInput[channel * signalSampleCount + index] =
+        Math.sin(2 * Math.PI * 60 * time + phase);
+    }
+  }
+  const signalPointer = allocate(signalInput.byteLength);
+  module.HEAPF64.set(signalInput, signalPointer / Float64Array.BYTES_PER_ELEMENT);
+  const signalCountsPointer = allocate(3 * Uint32Array.BYTES_PER_ELEMENT);
+  const signalQuery = module._sme_analyze_signal_packed(
+    signalPointer, signalSampleCount, signalChannelCount, sampleRate, signalFrameCount,
+    0, 0, 0, 0, 0, 0,
+    signalCountsPointer,
+    signalCountsPointer + Uint32Array.BYTES_PER_ELEMENT,
+    signalCountsPointer + 2 * Uint32Array.BYTES_PER_ELEMENT
+  );
+  assert.equal(signalQuery, 1, "Signal ABI query must report required output buffers.");
+  const signalCountOffset = signalCountsPointer / Uint32Array.BYTES_PER_ELEMENT;
+  const summaryCount = module.HEAPU32[signalCountOffset];
+  const frameCount = module.HEAPU32[signalCountOffset + 1];
+  const relationshipCount = module.HEAPU32[signalCountOffset + 2];
+  assert.equal(summaryCount, 3);
+  assert.equal(frameCount, 48);
+  assert.equal(relationshipCount, 3);
+  const summariesPointer = allocate(summaryCount * 11 * Float64Array.BYTES_PER_ELEMENT);
+  const framesPointer = allocate(frameCount * 10 * Float64Array.BYTES_PER_ELEMENT);
+  const relationshipsPointer = allocate(relationshipCount * 6 * Float64Array.BYTES_PER_ELEMENT);
+  const signalStatus = module._sme_analyze_signal_packed(
+    signalPointer, signalSampleCount, signalChannelCount, sampleRate, signalFrameCount,
+    summariesPointer, summaryCount, framesPointer, frameCount,
+    relationshipsPointer, relationshipCount,
+    signalCountsPointer,
+    signalCountsPointer + Uint32Array.BYTES_PER_ELEMENT,
+    signalCountsPointer + 2 * Uint32Array.BYTES_PER_ELEMENT
+  );
+  assert.equal(signalStatus, 0, "C++ scientific signal analysis must fill the requested buffers.");
+  const summaryOffset = summariesPointer / Float64Array.BYTES_PER_ELEMENT;
+  const relationOffset = relationshipsPointer / Float64Array.BYTES_PER_ELEMENT;
+  for (let channel = 0; channel < signalChannelCount; channel += 1) {
+    const offset = summaryOffset + channel * 11;
+    assert.equal(module.HEAPF64[offset + 8], 800, "60 Hz period must be 800 samples at 48 kHz.");
+    assert.ok(Math.abs(module.HEAPF64[offset + 10] - 60) < 1e-9,
+      "C++ signal analysis must recover the physical 60 Hz frequency.");
+  }
+  assert.ok(Math.abs(module.HEAPF64[relationOffset + 4] - 120) < 1,
+    "C++ signal analysis must recover the +120 degree phase relationship.");
+  assert.ok(Math.abs(module.HEAPF64[relationOffset + 10] + 120) < 1,
+    "C++ signal analysis must recover the -120 degree phase relationship.");
+  console.log("C++/WASM scientific signal analysis passed: 60 Hz, three channels, ±120° phase.");
+
 } finally {
   for (let index = allocations.length - 1; index >= 0; index -= 1) {
     wasm._free(allocations[index]);

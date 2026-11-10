@@ -1,5 +1,6 @@
 import { generateComposition, type Composition, type Mode, type NoteCollection, type TonalModeChoice } from "./math";
-import { generateWasmComposition, type WasmGenerationOptions } from "./wasm/bridge";
+import { analyzeScientificSignal, generateWasmComposition, type WasmGenerationOptions } from "./wasm/bridge";
+import type { ScientificSignalAnalysis } from "./science/signal";
 import { DEFAULT_INSTRUMENTS, DEFAULT_INSTRUMENT_LEVELS, DEFAULT_SOUND_PROFILE, MusicPlayer, renderCompositionWav, getConductorSection, type InstrumentSettings, type InstrumentLevels, type SoundProfile } from "./audio";
 import "./style.css";
 
@@ -13,6 +14,9 @@ let currentSeed = 0.314159;
 type AuditionEngine = "typescript" | "wasm";
 let generationToken = 0;
 let auditionLoading = false;
+let scientificSignalAnalysis: ScientificSignalAnalysis | undefined;
+let signalAnalysisSignature = "";
+let signalAnalysisRequest = 0;
 let richInstrumentsEnabled = true;
 let musicalArrangementEnabled = true;
 let musicalExpressionEnabled = true;
@@ -43,6 +47,7 @@ app.innerHTML = `
       </nav><div class="sidebar-note"><span class="note-symbol">ⓘ</span><p>Generated entirely in your browser with the Web Audio API. No audio files are downloaded.</p></div></aside>
       <section class="workbench"><div class="workbench-head"><div><div class="section-label">02 / EXPERIMENT</div><h2 id="mode-title">Mandelbrot explorer</h2><p id="mode-description">${descriptions.mandelbrot}</p></div><span class="tag">PURE ALGORITHM</span></div>
         <div class="visual-panel"><div class="visual-top"><span>SEQUENCE FIELD</span><span id="visual-meta">128 STEPS · 16 BARS · 30s</span></div><canvas id="viz" width="900" height="280" aria-label="Visualization of the generated mathematical sequence"></canvas><div class="visual-legend"><span><i class="legend-line"></i> MATHEMATICAL OUTPUT</span><span id="value-readout">AWAITING GENERATION</span></div></div>
+        <div class="signal-analysis-panel"><div class="visual-top"><span>SCIENTIFIC SIGNAL ANALYSIS</span><span id="signal-engine">C++17 / WASM</span></div><div class="signal-metrics"><div><span>MEAN</span><strong id="signal-mean">—</strong></div><div><span>RMS</span><strong id="signal-rms">—</strong></div><div><span>ACTIVITY</span><strong id="signal-activity">—</strong></div><div><span>PERIOD</span><strong id="signal-period">—</strong></div></div><div class="signal-timeline-label"><span>WINDOW ACTIVITY ENVELOPE</span><span id="signal-window-count">16 WINDOWS</span></div><p class="signal-note" id="signal-note">Analyzing the mathematical source with the shared C++ scientific-signal core. Physical Hz is shown only when a sample clock is supplied.</p></div>
         <div class="controls"><div class="section-label">03 / PARAMETERS</div><div class="control-grid">
           <label>Tempo <output id="bpm-value">128 BPM</output><input id="bpm" type="range" min="60" max="160" value="128"/></label>
           <label>Complexity <output id="complexity-value">55%</output><input id="complexity" type="range" min="10" max="100" value="55"/></label>
@@ -158,6 +163,75 @@ async function generateAuditionComposition(
     musicalExpression: musicalExpressionEnabled
   };
 }
+function updateSignalAnalysisReadout(analysis?: ScientificSignalAnalysis) {
+  const summary = analysis?.channels[0];
+  if (!summary) {
+    $("#signal-mean").textContent = "—";
+    $("#signal-rms").textContent = "—";
+    $("#signal-activity").textContent = "—";
+    $("#signal-period").textContent = "—";
+    $("#signal-window-count").textContent = "16 WINDOWS";
+    return;
+  }
+  $("#signal-mean").textContent = summary.mean.toFixed(3);
+  $("#signal-rms").textContent = summary.rms.toFixed(3);
+  $("#signal-activity").textContent = summary.meanAbsoluteDelta.toFixed(4);
+  $("#signal-period").textContent = summary.dominantPeriodSamples > 0
+    ? summary.dominantPeriodSamples + " STEPS"
+    : "APERIODIC";
+  $("#signal-window-count").textContent =
+    analysis.frames.length + " WINDOWS · SHARED TIMELINE";
+  const frequency = summary.dominantFrequencyHz > 0
+    ? " · " + summary.dominantFrequencyHz.toFixed(2) + " Hz"
+    : " · NO PHYSICAL SAMPLE CLOCK";
+  $("#signal-note").textContent =
+    "C++17 / WASM · " + analysis.sampleCount + " SAMPLES · " +
+    summary.periodicityStrength.toFixed(2) + " PERIODICITY CONFIDENCE" +
+    frequency + " · " + (summary.unit || "UNITLESS SOURCE");
+}
+function requestScientificSignalAnalysis(values: number[]) {
+  const signature = mode + "|" + values.join(",");
+  if (signature === signalAnalysisSignature) return;
+  signalAnalysisSignature = signature;
+  scientificSignalAnalysis = undefined;
+  const request = ++signalAnalysisRequest;
+  $("#signal-engine").textContent = "ANALYZING";
+  updateSignalAnalysisReadout();
+  void analyzeScientificSignal({
+    channels: [{ id: "mathematical-output", unit: "normalized", samples: values }],
+    sampleRateHz: 0
+  }, 16).then(analysis => {
+    if (request !== signalAnalysisRequest) return;
+    scientificSignalAnalysis = analysis;
+    $("#signal-engine").textContent = "C++17 / WASM";
+    updateSignalAnalysisReadout(analysis);
+    render();
+  }).catch(error => {
+    if (request !== signalAnalysisRequest) return;
+    $("#signal-engine").textContent = "UNAVAILABLE";
+    $("#signal-note").textContent =
+      "C++ signal analysis could not load. Build the optional module with npm run build:wasm. " +
+      "The mathematical visualization and TypeScript audio engine remain available.";
+    console.warn("Scientific signal analysis unavailable:", error);
+  });
+}
+function drawSignalActivityTrack() {
+  if (!scientificSignalAnalysis) return;
+  const frames = scientificSignalAnalysis.frames.filter(
+    frame => frame.channelId === "mathematical-output"
+  );
+  if (!frames.length) return;
+  const maximum = Math.max(1e-9, ...frames.map(frame => frame.activity));
+  const h = canvas.height, w = canvas.width;
+  for (const frame of frames) {
+    const ratio = Math.max(0, Math.min(1, frame.activity / maximum));
+    const x = frame.startFraction * w;
+    const width = Math.max(1, (frame.endFraction - frame.startFraction) * w - 1);
+    const barHeight = 3 + ratio * 8;
+    ctx.fillStyle = "rgba(132,194,175," + (0.22 + ratio * 0.58) + ")";
+    ctx.fillRect(x, h - 9 - barHeight, width, barHeight);
+  }
+}
 function render() {
   const comp = generateComposition(mode, options());
   const w = canvas.width, h = canvas.height;
@@ -167,6 +241,7 @@ function render() {
   for (let y = 35; y < h; y += 42) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
   const values = comp.values;
   visualValues = values;
+  requestScientificSignalAnalysis(values);
   if (mode === "shepard") {
     $("#tonality-readout").textContent = "SHEPARD · CONTINUOUS CHROMATIC OCTAVE LAYERS";
   } else if (comp.tonality) {
@@ -188,6 +263,7 @@ function render() {
     ctx.strokeStyle=gradient;ctx.lineWidth=2.5;ctx.stroke();
     values.forEach((v,i)=>{if(i%4===0){const x=i/(values.length-1)*w,y=h-30-v*(h-65);ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);ctx.fillStyle="#b7a2df";ctx.fill();}});
   }
+  drawSignalActivityTrack();
   $("#visual-meta").textContent = `${values.length} STEPS · 16 BARS · ${Math.round(comp.duration)}s`;
   $("#value-readout").textContent = `MIN ${Math.min(...values).toFixed(3)}  /  MAX ${Math.max(...values).toFixed(3)}`;
   if (player.isPlaying) drawPlayhead(player.getProgress());
@@ -195,6 +271,10 @@ function render() {
 function drawPlayhead(progress: number) {
   if (!visualValues.length) return;
   const w = canvas.width, h = canvas.height;
+  const timelineX = progress * w;
+  ctx.strokeStyle = "rgba(244,213,138,.42)";
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(timelineX, h - 25); ctx.lineTo(timelineX, h); ctx.stroke();
   if (mode === "euclidean") {
     const cx = w/2, cy = h/2, radius = 90, angle = progress * Math.PI * 2 - Math.PI/2;
     const x = cx + Math.cos(angle) * (radius + 20), y = cy + Math.sin(angle) * (radius + 20);

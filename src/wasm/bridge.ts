@@ -1,3 +1,4 @@
+import { mapPackedScientificSignal, type ScientificSignalAnalysis, type ScientificSignalInput } from "../science/signal";
 import type {
   Composition,
   NoteCollection,
@@ -13,6 +14,11 @@ const SME_EVENT_STRIDE = 8;
 const SME_TONALITY_STRIDE = 7;
 const MAX_SOURCE_VALUES = 1_000_000;
 const MAX_SCORE_EVENTS = 100_000;
+const MAX_SIGNAL_CHANNELS = 32;
+const MAX_TOTAL_SIGNAL_SAMPLES = 1_000_000;
+const SIGNAL_SUMMARY_STRIDE = 11;
+const SIGNAL_FRAME_STRIDE = 10;
+const SIGNAL_RELATIONSHIP_STRIDE = 6;
 
 type Voice = NonNullable<NoteEvent["voice"]>;
 
@@ -56,6 +62,22 @@ export interface ScienceMusicWasmModule {
     outputCapacity: number,
     outputCountPointer: number,
     outputTonalityPointer: number
+  ): number;
+  _sme_analyze_signal_packed(
+    samplesPointer: number,
+    sampleCount: number,
+    channelCount: number,
+    sampleRateHz: number,
+    frameCount: number,
+    summariesPointer: number,
+    summaryCapacity: number,
+    framesPointer: number,
+    frameCapacity: number,
+    relationshipsPointer: number,
+    relationshipCapacity: number,
+    summaryCountPointer: number,
+    frameCountPointer: number,
+    relationshipCountPointer: number
   ): number;
 }
 
@@ -290,6 +312,136 @@ export function mapPackedScore(
  * Generate a symbolic score with the C++ core. This is opt-in and does not
  * change the existing TypeScript composition or live-playback path.
  */
+
+/**
+ * Analyze synchronized scientific channels in the C++ core. Frame fractions
+ * map onto the same normalized timeline used by the visualizer and music.
+ */
+export async function analyzeScientificSignal(
+  input: ScientificSignalInput,
+  requestedFrameCount = 16
+): Promise<ScientificSignalAnalysis> {
+  const channels = input.channels;
+  if (!Array.isArray(channels) || channels.length < 1 ||
+      channels.length > MAX_SIGNAL_CHANNELS) {
+    throw new RangeError("Scientific signal must contain between one and 32 channels.");
+  }
+  const sampleCount = channels[0]?.samples.length ?? 0;
+  if (!Number.isInteger(sampleCount) || sampleCount < 2 ||
+      sampleCount * channels.length > MAX_TOTAL_SIGNAL_SAMPLES) {
+    throw new RangeError("Scientific signal sample count is outside the supported range.");
+  }
+  if (!Number.isInteger(requestedFrameCount) || requestedFrameCount < 1 ||
+      requestedFrameCount > 256 || requestedFrameCount > sampleCount) {
+    throw new RangeError("Signal frame count must be between one and min(256, sample count).");
+  }
+  const sampleRateHz = input.sampleRateHz ?? 0;
+  if (!Number.isFinite(sampleRateHz) || sampleRateHz < 0 ||
+      sampleRateHz > 1_000_000_000) {
+    throw new RangeError("Signal sample rate must be zero or a finite value up to 1e9 Hz.");
+  }
+
+  const ids = new Set<string>();
+  const flattened = new Float64Array(sampleCount * channels.length);
+  channels.forEach((channel, channelIndex) => {
+    if (!channel.id.trim() || ids.has(channel.id)) {
+      throw new TypeError("Scientific signal channel IDs must be non-empty and unique.");
+    }
+    ids.add(channel.id);
+    if (channel.samples.length !== sampleCount) {
+      throw new TypeError("All scientific signal channels must have the same sample count.");
+    }
+    for (let sample = 0; sample < sampleCount; sample += 1) {
+      const value = channel.samples[sample];
+      if (!Number.isFinite(value)) {
+        throw new TypeError("Scientific signal samples must all be finite numbers.");
+      }
+      flattened[channelIndex * sampleCount + sample] = value;
+    }
+  });
+
+  const relationshipCount = channels.length * (channels.length - 1) / 2;
+  const frameCapacity = channels.length * requestedFrameCount;
+  const module = await loadWasmModule();
+  const allocations: number[] = [];
+  const allocate = (byteLength: number): number => {
+    const pointer = module._malloc(Math.max(1, byteLength));
+    if (!pointer) throw new Error("WebAssembly signal-analysis allocation failed.");
+    allocations.push(pointer);
+    return pointer;
+  };
+
+  try {
+    const samplesPointer = allocate(flattened.byteLength);
+    const summariesPointer = allocate(
+      channels.length * SIGNAL_SUMMARY_STRIDE * Float64Array.BYTES_PER_ELEMENT
+    );
+    const framesPointer = allocate(
+      frameCapacity * SIGNAL_FRAME_STRIDE * Float64Array.BYTES_PER_ELEMENT
+    );
+    const relationshipsPointer = relationshipCount > 0
+      ? allocate(relationshipCount * SIGNAL_RELATIONSHIP_STRIDE * Float64Array.BYTES_PER_ELEMENT)
+      : 0;
+    const countsPointer = allocate(3 * Uint32Array.BYTES_PER_ELEMENT);
+
+    module.HEAPF64.set(flattened, samplesPointer / Float64Array.BYTES_PER_ELEMENT);
+    const status = module._sme_analyze_signal_packed(
+      samplesPointer,
+      sampleCount,
+      channels.length,
+      sampleRateHz,
+      requestedFrameCount,
+      summariesPointer,
+      channels.length,
+      framesPointer,
+      frameCapacity,
+      relationshipsPointer,
+      relationshipCount,
+      countsPointer,
+      countsPointer + Uint32Array.BYTES_PER_ELEMENT,
+      countsPointer + 2 * Uint32Array.BYTES_PER_ELEMENT
+    );
+    if (status !== SME_OK) {
+      throw new Error("C++ scientific signal analysis failed with status " + status + ".");
+    }
+
+    const countOffset = countsPointer / Uint32Array.BYTES_PER_ELEMENT;
+    const summaryCount = module.HEAPU32[countOffset];
+    const frameCount = module.HEAPU32[countOffset + 1];
+    const actualRelationshipCount = module.HEAPU32[countOffset + 2];
+    if (summaryCount !== channels.length ||
+        frameCount !== frameCapacity ||
+        actualRelationshipCount !== relationshipCount) {
+      throw new Error("C++ scientific signal analysis returned inconsistent record counts.");
+    }
+
+    const summariesOffset = summariesPointer / Float64Array.BYTES_PER_ELEMENT;
+    const framesOffset = framesPointer / Float64Array.BYTES_PER_ELEMENT;
+    const relationshipsOffset = relationshipsPointer / Float64Array.BYTES_PER_ELEMENT;
+    const packedSummaries = Float64Array.from(module.HEAPF64.subarray(
+      summariesOffset, summariesOffset + summaryCount * SIGNAL_SUMMARY_STRIDE
+    ));
+    const packedFrames = Float64Array.from(module.HEAPF64.subarray(
+      framesOffset, framesOffset + frameCount * SIGNAL_FRAME_STRIDE
+    ));
+    const packedRelationships = relationshipCount > 0
+      ? Float64Array.from(module.HEAPF64.subarray(
+        relationshipsOffset,
+        relationshipsOffset + actualRelationshipCount * SIGNAL_RELATIONSHIP_STRIDE
+      ))
+      : new Float64Array();
+
+    return mapPackedScientificSignal(
+      packedSummaries, packedFrames, packedRelationships,
+      channels, sampleCount, sampleRateHz
+    );
+  } finally {
+    for (let index = allocations.length - 1; index >= 0; index -= 1) {
+      module._free(allocations[index]);
+    }
+  }
+}
+
 export async function generateWasmComposition(
   sourceValues: readonly number[],
   inputOptions: WasmGenerationOptions = {}
