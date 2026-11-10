@@ -44,6 +44,37 @@ The conductor is an **adaptive, score-aware system**, not a fixed instrument sch
 
 Live playback prepares each upcoming phrase just ahead of its entrance. Offline WAV rendering walks the same deterministic conductor session from beginning to end, preserving exact event parity. Identical composition, seed and instrument settings produce identical decisions. Disabling the conductor bypasses its orchestration.
 
+## C++ Musical Intelligence Core (v1.0)
+
+The repository now also contains a standalone **C++17 composition-intelligence library** in `cpp/`. It accepts normalized mathematical source values and produces a deterministic symbolic score; it does not synthesize waveforms or replace the existing browser engine yet.
+
+The native core includes:
+
+- Automatic or manually overridden tonal-center and major/minor inference for white-key diatonic and black-key pentatonic collections.
+- Source-contour analysis (mean, trend, movement, centroid and energy).
+- Four-note motif extraction with inversion, retrograde and sequence development.
+- Eight source-shaped two-bar chord frames, aligned to the generated lead phrase.
+- A connected 16-bar opening/development/climax/reprise form.
+- A phrase-aware conductor that selects at most two supporting roles and makes plucked/analog answers compete for the same melodic space.
+- Scale-aware bass, pad and melodic answer events, plus independently enabled source-shaped percussion.
+- A stable two-pass C ABI designed for future WebAssembly integration.
+
+Build and test the native module (requires CMake and a C++17 compiler):
+
+```bash
+cmake -S cpp -B build/cpp -DCMAKE_BUILD_TYPE=Release
+cmake --build build/cpp --parallel
+ctest --test-dir build/cpp --output-on-failure
+```
+
+Generate a deterministic symbolic score CSV:
+
+```bash
+./build/cpp/science_music_demo --seed 42 --collection black --mode auto --output score.csv
+```
+
+The CSV contains beat positions, durations, MIDI pitches, velocities, panning, musical roles and phrase identifiers. It is an event score, not an audio file. The existing TypeScript/Web Audio browser app remains the live product until a future WebAssembly adapter is implemented and parity-tested.
+
 ## Sound design
 
 The **Sound Character** selector offers:
@@ -75,6 +106,8 @@ npm run build
 ## Design principles
 
 - Mathematical generators and automatic tonal-center inference are pure functions and deterministic for a fixed input.
+- The native C++17 intelligence core uses the same principles: fixed source + seed + options produce the same symbolic composition.
+- Composition intelligence returns a shared score representation; sound synthesis and audio rendering remain separate modules.
 - The shared musical context exposes the selected note collection, root, mode and chord frames to every pitched instrument.
 - White-key/diatonic improvisation can use deliberate tension; black-key/pentatonic improvisation avoids semitone and tritone intervals by construction.
 - Mathematical behavior meaningfully influences pitch, rhythm, contour and density.

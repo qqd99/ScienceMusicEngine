@@ -7,7 +7,8 @@
 - **Repository:** [qqd99/ScienceMusicEngine](https://github.com/qqd99/ScienceMusicEngine)
 - **Default branch:** `main`
 - **Live app:** https://qqd99.github.io/ScienceMusicEngine/
-- **Local stack:** TypeScript, Vite, Vitest, browser-native Web Audio API.
+- **Browser stack:** TypeScript, Vite, Vitest, browser-native Web Audio API.
+- **Native intelligence stack:** standalone C++17 library under `cpp/`, CMake/CTest, no third-party runtime dependencies, and a stable C ABI intended for a future WebAssembly adapter.
 - **Current product:** Mathematics Music Engine / Science Music Engine — a browser laboratory that turns mathematical structures into deterministic musical events and synthesizes them into original music.
 
 This is the active project. The earlier `qqd99/GenerativeMusic` repository was a separate Christmas-music experiment. The user explicitly chose to drop the random Christmas generator and start a new Mathematics Music Engine in this repository. **Do not resume Christmas carols, Christmas rotation, or Christmas-specific requirements here. Do not modify `GenerativeMusic` or `GiangSinhOnline` unless the user explicitly asks.**
@@ -22,7 +23,7 @@ These are important requirements, not optional suggestions:
 2. **No downloaded audio samples.** Generate instruments and percussion procedurally with Web Audio oscillators, filters, envelopes, noise, and other browser-native synthesis. Do not add downloaded audio assets. Do not silently introduce sample packs or external audio services.
 3. **Deterministic composition.** A fixed mathematical mode, seed, configuration, and event sequence must produce the same musical events. Never use unseeded randomness to choose fallback notes, melodies, or instrument events. The explicit “New Seed” action may choose a new seed; after that, generation must be reproducible from that seed.
 4. **Mathematics is the source of musical content.** Do not turn the project into an ordinary prewritten song player with a mathematical visualizer attached. Mathematical behavior must meaningfully influence musical pitches, timing, rhythm, contour, density, or other musical parameters.
-5. **Separate concerns.** Keep mathematical event generation, composition/arrangement, instrument synthesis, and playback/rendering distinct. Avoid coupling an instrument's existence to an unrelated composition toggle.
+5. **Separate concerns.** Keep mathematical event generation, composition/arrangement, instrument synthesis, and playback/rendering distinct. Avoid coupling an instrument's existence to an unrelated composition toggle. The native C++ intelligence library produces symbolic score events only; it must not absorb browser audio rendering or instrument synthesis.
 6. **Independent controls.** Every new user-facing sound feature must have its own clearly labeled ON/OFF control. Instrument layers must remain independently switchable and mixable. Do not make the effect so subtle that the user cannot hear the difference; demonstrate it in a meaningful A/B comparison.
 7. **Live and offline parity.** The same event resolution, instrument settings, sound profile, conductor behavior, and volume settings must apply to live playback and WAV export.
 8. **Ask when uncertain.** The user explicitly requested: “During development, if you have any question, stop and ask me.” Do not guess about ambiguous musical direction or make a large product decision without asking.
@@ -69,7 +70,13 @@ The browser UI includes mathematical visualization, a moving playhead, tempo, co
 
 ## 4. Code map
 
-- `src/math.ts` — pure mathematical generators and deterministic composition generation. Main entry point: `generateComposition()`. Defines modes, compositions, and note events.
+- `src/math.ts` — current browser-side pure mathematical generators and deterministic composition generation. Main entry point: `generateComposition()`.
+- `cpp/include/science_music/intelligence.hpp` and `cpp/src/intelligence.cpp` — standalone C++17 musical-intelligence API and implementation: tonal inference, motif development, harmony, phrase analysis, and conductor decisions.
+- `cpp/include/science_music/intelligence_c.h` and `cpp/src/c_api.cpp` — stable C ABI for native callers and a future WebAssembly boundary.
+- `cpp/examples/generate_demo.cpp` — deterministic logistic-source CLI example that writes a symbolic score CSV.
+- `cpp/tests/intelligence_test.cpp` and `cpp/CMakeLists.txt` — native tests and CMake build.
+
+The C++ core is not yet wired into the browser app. Keep the existing TypeScript/Web Audio path operational until a future WebAssembly adapter has parity tests and is explicitly integrated.
 - `src/audio.ts` — Web Audio synthesis, instrument settings and event resolution, ensemble conductor, live player, and OfflineAudioContext WAV renderer. Key functions include `resolveInstrumentEvents()`, `preparePlaybackEvents()`, `applyEnsembleConductor()`, `getConductorSection()`, `MusicPlayer`, and `renderCompositionWav()`.
 - `src/main.ts` — browser UI, controls, live updates, visualization/playhead, and WAV export.
 - `src/style.css` — UI styling.
@@ -98,14 +105,39 @@ After editing:
    npm install
    npm test
    npm run build
+   cmake -S cpp -B build/cpp -DCMAKE_BUILD_TYPE=Release
+   cmake --build build/cpp --parallel
+   ctest --test-dir build/cpp --output-on-failure
+   ./build/cpp/science_music_demo --seed 42 --collection black --mode auto --output build/cpp/demo-score.csv
    ```
-   Node.js 20+ is required locally; the GitHub Actions workflow currently uses Node.js 22.
+   Node.js 20+ and a C++17 compiler/CMake are required locally; GitHub Actions uses Node.js 22 and Ubuntu's native C++ toolchain.
 3. Listen to the live app and export a WAV when the change affects sound. Do not claim perceptual quality, loudness calibration, or musical success based on unit tests alone.
 4. Update `README.md` and this handoff when behavior, controls, architecture, commands, or status changes.
 5. Verify the GitHub Actions run for the exact commit before saying CI or deployment passed. The workflow deploys GitHub Pages on pushes to `main`; do not claim a deployment succeeded while it is queued or failing.
 6. Keep changes focused. Do not rewrite unrelated systems or silently remove existing experiments/features.
 
 ## 6. Current handoff / resume point
+
+### Current C++ musical-intelligence module
+
+The user requested the next Generative Music Engine milestone to prioritize **musical intelligence** and use **C++**. A standalone, portable C++17 module has been added under `cpp/`.
+
+- `IntelligenceEngine::generate()` accepts normalized mathematical source values and deterministic generation options, and returns a symbolic `CompositionPlan`. It does not synthesize audio.
+- Tonal inference supports white-key diatonic major/minor and black-key major/minor pentatonic collections, automatic root/mode selection, independent manual root/mode overrides, and confidence/provenance metadata.
+- Source analysis measures section mean, trend, movement, centroid and energy.
+- A four-note source-derived motif is developed through inversion, retrograde and sequence.
+- Eight two-bar chord frames are selected from source-shaped harmonic palettes and aligned against the actual lead phrase. The progression begins and ends on tonic.
+- The score has four connected movements over 16 bars: opening, development, climax and reprise/cadence.
+- The conductor analyzes each two-bar phrase and selects at most two supporting roles. Bass and pads compete with available answer space; plucked and analog lines are mutually exclusive alternatives. Decisions carry a small continuity preference from the previous phrase.
+- Pitched support notes share the resolved scale and chord frames. Percussion is a separate source-shaped rhythm role.
+- `intelligence_c.h` exposes a two-pass C ABI (query required event count, then fill caller-owned buffer), suitable for a future WebAssembly boundary.
+- The C++ module is a symbolic composition core only. It is not yet connected to the browser UI and does not render audio. Do not describe the live website as using this C++ engine until that integration is implemented and verified.
+- Native build: `cmake -S cpp -B build/cpp`; native tests: `ctest --test-dir build/cpp --output-on-failure`; demo: `./build/cpp/science_music_demo --seed 42 --collection black --mode auto --output score.csv`.
+- GitHub Actions must run the native CMake build, CTest suite and demo smoke test alongside the existing TypeScript/Vite checks before deployment.
+
+**Next action:** inspect the GitHub Actions run for the commit that adds the C++ module. Fix any native compiler/test failures before adding more features. Once native behavior is stable, the next architectural step is a WebAssembly adapter with event-level parity tests; preserve the TypeScript browser path until the adapter is actually integrated. Tests cannot prove that the resulting music sounds good; eventually audition the C++ score through the existing synthesizer.
+
+The user approved a hybrid tonal-center system and shared musical intelligence for white-key and black-key improvisation.
 
 The user approved a hybrid tonal-center system and shared musical intelligence for white-key and black-key improvisation.
 
