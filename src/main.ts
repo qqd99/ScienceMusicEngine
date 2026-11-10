@@ -273,7 +273,8 @@ function drawReferenceTimeline() {
     referenceContext.fillText("IMPORT A LOCAL AUDIO OR VIDEO REFERENCE", 18, height / 2);
     return;
   }
-  const frames = referenceAnalysis.frames;
+  const analysis = referenceAnalysis;
+  const frames = analysis.frames;
   const maxWave = Math.max(1e-6, ...frames.flatMap(frame => [
     Math.abs(frame.waveformMinimum), Math.abs(frame.waveformMaximum)
   ]));
@@ -282,7 +283,7 @@ function drawReferenceTimeline() {
   const slotWidth = width / frames.length;
   frames.forEach((frame, index) => {
     const x = index * slotWidth;
-    if (referenceAnalysis.audioDetected) {
+    if (analysis.audioDetected) {
       const center = height * 0.52;
       const top = center - (frame.waveformMaximum / maxWave) * 46;
       const bottom = center - (frame.waveformMinimum / maxWave) * 46;
@@ -302,13 +303,13 @@ function drawReferenceTimeline() {
       referenceContext.fillStyle = "rgba(244,213,138,.8)";
       referenceContext.fillRect(x + lowWidth + midWidth, height - 7, highWidth, 3);
     }
-    if (referenceAnalysis.visualFrameCount > 0) {
+    if (analysis.visualFrameCount > 0) {
       const motion = Math.max(0, Math.min(1, frame.visualMotion / maxMotion));
       referenceContext.fillStyle = "rgba(244,213,138," + (0.18 + motion * 0.72) + ")";
       referenceContext.fillRect(x + 1, height - 19, Math.max(1, slotWidth - 2), 3 + motion * 8);
     }
   });
-  if (referenceAnalysis.audioDetected) {
+  if (analysis.audioDetected) {
     referenceContext.beginPath();
     frames.forEach((frame, index) => {
       const x = (index + 0.5) * slotWidth;
