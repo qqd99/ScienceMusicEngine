@@ -18,7 +18,7 @@ export function scheduleGridEvent(
   const pan = context.createStereoPanner();
   filter.type = "lowpass";
   filter.frequency.setValueAtTime(
-    kind === "fault-noise" ? 2500 : kind === "arc" || kind === "cascade" ? 2300 : 1400, at
+    kind === "harmonic" ? 6800 : kind === "fault-noise" ? 2500 : kind === "arc" || kind === "cascade" ? 2300 : 1400, at
   );
   pan.pan.setValueAtTime(event.pan, at);
   const amplitude = Math.max(0.0001, event.velocity);
