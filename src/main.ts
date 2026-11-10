@@ -354,6 +354,7 @@ function resetReferenceAnalysis() {
   referenceAbort = null;
   referenceAnalysis = null;
   referenceGuideEnabled = false;
+  ($("#reference-progress") as HTMLDivElement).hidden = true;
   drawReferenceTimeline();
   $("#reference-duration").textContent = "—";
   $("#reference-tempo").textContent = "—";
@@ -548,17 +549,18 @@ $("#reference-file").addEventListener("change", () => {
   if (referenceObjectUrl) URL.revokeObjectURL(referenceObjectUrl);
   referenceFile = file;
   referenceKind = inferReferenceKind(file);
+  resetReferenceAnalysis();
   try {
     validateReferenceFile(file, referenceKind);
   } catch (error) {
     referenceFile = null;
+    referenceKind = null;
     $("#reference-status").textContent = "INVALID FILE";
     $("#reference-message").textContent = error instanceof Error ? error.message : "Unsupported reference file.";
     ($("#analyze-reference") as HTMLButtonElement).disabled = true;
     ($("#clear-reference") as HTMLButtonElement).disabled = false;
     return;
   }
-  resetReferenceAnalysis();
   referenceObjectUrl = URL.createObjectURL(file);
   const audio = $("#reference-audio") as HTMLAudioElement;
   const video = $("#reference-video") as HTMLVideoElement;
@@ -582,7 +584,9 @@ $("#reference-file").addEventListener("change", () => {
   drawReferenceTimeline();
 });
 $("#analyze-reference").addEventListener("click", async () => {
-  if (!referenceFile || !referenceKind) return;
+  const file = referenceFile;
+  const kind = referenceKind;
+  if (!file || !kind) return;
   referenceAbort?.abort();
   const controller = new AbortController();
   referenceAbort = controller;
@@ -595,14 +599,14 @@ $("#analyze-reference").addEventListener("click", async () => {
   setReferenceProgress(0.02, "Preparing local media decoding");
   try {
     let analysis: ReferenceMediaAnalysis;
-    if (referenceKind === "audio") {
-      const audioBuffer = await decodeAudioFile(referenceFile);
+    if (kind === "audio") {
+      const audioBuffer = await decodeAudioFile(file);
       if (controller.signal.aborted) throw new DOMException("Cancelled", "AbortError");
       setReferenceProgress(0.18, "Resampling and downmixing audio");
       const prepared = await prepareMonoReferenceAudio(audioBuffer, controller.signal);
       setReferenceProgress(0.42, "Running spectral and rhythm analysis");
       analysis = await analyzeReferenceSamples(prepared.samples, prepared.sampleRateHz, {
-        fileName: referenceFile.name,
+        fileName: file.name,
         kind: "audio",
         durationSeconds: audioBuffer.duration,
         sourceSampleRateHz: audioBuffer.sampleRate,
@@ -610,7 +614,7 @@ $("#analyze-reference").addEventListener("click", async () => {
       });
     } else {
       const extracted = await extractVideoReference(
-        referenceFile,
+        file,
         controller.signal,
         (progress, message) => setReferenceProgress(progress, message)
       );
@@ -620,7 +624,7 @@ $("#analyze-reference").addEventListener("click", async () => {
         const prepared = await prepareMonoReferenceAudio(extracted.audioBuffer, controller.signal);
         setReferenceProgress(0.92, "Analyzing audio and synchronized video timeline");
         analysis = await analyzeReferenceSamples(prepared.samples, prepared.sampleRateHz, {
-          fileName: referenceFile.name,
+          fileName: file.name,
           kind: "video",
           durationSeconds: extracted.durationSeconds,
           sourceSampleRateHz: extracted.sourceSampleRateHz,
@@ -630,7 +634,7 @@ $("#analyze-reference").addEventListener("click", async () => {
         });
       } else {
         analysis = createVisualOnlyReferenceAnalysis({
-          fileName: referenceFile.name,
+          fileName: file.name,
           durationSeconds: extracted.durationSeconds,
           visualFrames: extracted.visualFrames,
           warnings: extracted.warnings
@@ -654,14 +658,16 @@ $("#analyze-reference").addEventListener("click", async () => {
         ? error.message
         : "The reference media could not be analyzed.";
       console.error("Reference media analysis failed:", error);
-    } else {
+    } else if (referenceAbort === controller) {
       $("#reference-status").textContent = "CANCELLED";
       $("#reference-message").textContent = "Reference analysis was cancelled.";
     }
   } finally {
-    if (referenceAbort === controller) referenceAbort = null;
-    button.disabled = !referenceFile;
-    input.disabled = false;
+    if (referenceAbort === controller) {
+      referenceAbort = null;
+      button.disabled = !referenceFile;
+      input.disabled = false;
+    }
   }
 });
 $("#clear-reference").addEventListener("click", () => {
@@ -681,6 +687,7 @@ $("#clear-reference").addEventListener("click", () => {
   audio.hidden = true;
   video.hidden = true;
   ($("#reference-file") as HTMLInputElement).value = "";
+  ($("#reference-file") as HTMLInputElement).disabled = false;
   ($("#analyze-reference") as HTMLButtonElement).disabled = true;
   ($("#clear-reference") as HTMLButtonElement).disabled = true;
   ($("#reference-progress") as HTMLDivElement).hidden = true;

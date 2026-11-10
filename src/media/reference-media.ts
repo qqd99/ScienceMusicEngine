@@ -228,10 +228,17 @@ export async function extractVideoReference(
     video.remove();
     URL.revokeObjectURL(objectUrl);
     signal?.removeEventListener("abort", relayAbort);
+    signal?.removeEventListener("abort", stopOnAbort);
   };
   const warnings: string[] = [];
   const chunks: Blob[] = [];
   let stopRecording: (() => void) | undefined;
+  const stopOnAbort = () => {
+    captureWait.abort();
+    video.pause();
+    stopRecording?.();
+  };
+  signal?.addEventListener("abort", stopOnAbort, { once: true });
 
   try {
     assertNotAborted(signal);
@@ -257,19 +264,18 @@ export async function extractVideoReference(
       }, { once: true });
       recorder!.addEventListener("error", () => reject(new Error("The browser could not record the video's audio track.")), { once: true });
     });
+    void stopped.catch(() => undefined);
     stopRecording = () => {
       if (recorder?.state === "recording") recorder.stop();
     };
 
     const metadata = waitForMediaEvent(video, "loadedmetadata", captureWait.signal, 20_000);
-    const ended = waitForMediaEvent(video, "ended", captureWait.signal, MAX_REFERENCE_VIDEO_SECONDS * 1_000 + 30_000);
     video.addEventListener("timeupdate", () => {
       if (video.duration > 0) {
         onProgress?.(0.05 + 0.62 * (video.currentTime / video.duration), "Capturing video audio");
       }
     });
     recorder.start(1_000);
-    void audioContext.resume();
     const playback = video.play();
     const resumed = audioContext.resume();
     await metadata;
@@ -282,6 +288,9 @@ export async function extractVideoReference(
     }
     await Promise.all([playback, resumed]);
     assertNotAborted(signal);
+    const ended = waitForMediaEvent(
+      video, "ended", captureWait.signal, MAX_REFERENCE_VIDEO_SECONDS * 1_000 + 30_000
+    );
     await ended;
     stopRecording();
     const recording = await stopped;

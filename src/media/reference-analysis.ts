@@ -365,12 +365,13 @@ export async function analyzeReferenceSamples(
   for (let index = 0; index < windows; index += 1) {
     const startFraction = index / windows;
     const endFraction = (index + 1) / windows;
-    const spectralStart = Math.floor(index * spectral.frames.length / windows);
-    const spectralEnd = Math.max(
-      spectralStart + 1,
-      Math.floor((index + 1) * spectral.frames.length / windows)
+    const spectralIndex = Math.min(
+      spectral.frames.length - 1,
+      Math.floor(((index + 0.5) / windows) * spectral.frames.length)
     );
-    const spectralSlice = spectral.frames.slice(spectralStart, spectralEnd);
+    const spectralSlice = spectral.frames.length
+      ? [spectral.frames[spectralIndex]]
+      : [];
     const signalFrame = signalFrames[index];
     const average = (key: keyof SpectralFrame) => mean(
       spectralSlice.map(frame => Number(frame[key]))
