@@ -9,7 +9,7 @@
 - **Live app:** https://qqd99.github.io/ScienceMusicEngine/
 - **Browser stack:** TypeScript, Vite, Vitest, browser-native Web Audio API.
 - **Native intelligence stack:** standalone C++17 library under `cpp/`, CMake/CTest, no third-party runtime dependencies, and a stable two-pass C ABI with an opt-in packed-array WebAssembly bridge.
-- **Current product:** Mathematics Music Engine / Science Music Engine — a browser laboratory that turns mathematical structures into deterministic musical events and synthesizes them into original music.
+- **Current product:** Mathematics Music Engine / Science Music Engine — a browser laboratory that turns mathematical structures into deterministic musical events, optionally analyzes local audio/video references, and synthesizes original music.
 
 This is the active project. The earlier `qqd99/GenerativeMusic` repository was a separate Christmas-music experiment. The user explicitly chose to drop the random Christmas generator and start a new Mathematics Music Engine in this repository. **Do not resume Christmas carols, Christmas rotation, or Christmas-specific requirements here. Do not modify `GenerativeMusic` or `GiangSinhOnline` unless the user explicitly asks.**
 
@@ -67,6 +67,17 @@ The browser UI includes mathematical visualization, a moving playhead, tempo, co
 - The C++ musical-intelligence phrase profiles reuse the same analyzer for RMS and activity. The TypeScript score remains the production audio generator; the signal-analysis overlay uses the C++/WASM analyzer. Future science domains can supply multiple channels and physical units without changing the timeline contract.
 - Multi-channel three-phase test data validates 60 Hz recovery at 48 kHz and phase relationships of approximately ±120 degrees. These are algorithm tests, not a new power-grid experiment or a claim about the uploaded video's full soundtrack.
 
+### Reference media analysis and reference-guided composition
+
+- `src/media/reference-media.ts` owns local file validation, Web Audio decoding/downmix/resampling, and local video capture. `src/media/reference-analysis.ts` owns deterministic FFT features, spectral centroid, low/mid/high-band energy, onset strength, BPM autocorrelation, timeline aggregation and normalized reference-guide contours.
+- Audio references are limited to 10 minutes and 150 MB. Video references are limited to 3 minutes and 150 MB because the browser captures the video's audio in real time through a `MediaStreamAudioDestinationNode`/MediaRecorder path. The captured source is routed through a zero-gain output to avoid playing it loudly during analysis.
+- Video frames are sampled locally at up to 96 evenly spaced timestamps. The visual metric is mean luminance difference between adjacent sampled frames; it is not object detection, scene understanding or semantic visual AI.
+- The app downmixes source audio to mono and resamples it to at most 12 kHz / 900,000 samples before calling the shared C++/WASM signal analyzer. Browser FFT analysis still completes if WASM is unavailable; the UI must state that fallback honestly.
+- The 128-window timeline aligns audio RMS/activity, spectral centroid, band-energy balance, onset strength and video motion. Tempo comes from onset-envelope autocorrelation and is an estimate with a confidence value; do not invent BPM for silent/ambiguous content.
+- Reference-guided composition is an explicit opt-in. With it enabled, confident reference BPM replaces the tempo slider for ordinary experiments, and a 24% blend of normalized reference energy/onset contour influences the mathematical source sequence. Mathematics remains primary; raw audio is never converted into copied notes or used as an instrument sample. The Shepard illusion is deliberately excluded.
+- All media remains local in the browser. Do not upload, store, or transmit the user's reference file. Do not add third-party transcription, analysis, music-generation or storage services.
+
+
 ### Critical instrument-routing behavior
 
 - If **one or more dedicated instruments are enabled**, the legacy/default oscillator must be bypassed. Do not let it play underneath dedicated instruments.
@@ -82,6 +93,8 @@ The browser UI includes mathematical visualization, a moving playhead, tempo, co
 - `cpp/include/science_music/scientific_signal.hpp` and `cpp/src/scientific_signal.cpp` — domain-neutral multi-channel scientific signal analysis, including periodicity, physical frequency when sample rate is known, time-window features and phase relationships.
 - `cpp/include/science_music/scientific_signal_c.h` and `cpp/src/scientific_signal_c.cpp` — packed C ABI for signal summaries, normalized timeline frames and channel-pair relationships.
 - `src/science/signal.ts` — typed browser representation and pure packed-ABI mapping for scientific signal analysis.
+- `src/media/reference-analysis.ts` — browser FFT, spectral/rhythm feature extraction, aligned reference timeline, and normalized guide contour.
+- `src/media/reference-media.ts` — local audio decoding, bounded OfflineAudioContext resampling, and video audio/frame capture.
 - `cpp/include/science_music/intelligence.hpp` and `cpp/src/intelligence.cpp` — standalone C++17 musical-intelligence API and implementation: tonal inference, motif development, harmony, phrase analysis, and conductor decisions.
 - `cpp/include/science_music/intelligence_c.h` and `cpp/src/c_api.cpp` — two-pass struct C ABI plus a packed-array C ABI for WebAssembly; both preserve caller-owned output buffers and deterministic error codes.
 - `src/wasm/bridge.ts` — Emscripten loader, safe linear-memory ownership, MIDI/beat-to-browser-event conversion, and C++ scientific-signal analysis.
@@ -96,6 +109,7 @@ The C++ core is available through an opt-in A/B audition selector in the browser
 - `tests/math.test.ts` — mathematical generation, deterministic behavior, composition, and musical-form tests.
 - `tests/audio.test.ts` — instrument routing, fallbacks, conductor, and audio-event tests.
 - `tests/wasm.test.ts` — packed-score mapping, role conversion, tempo conversion, and malformed-ABI checks.
+- `tests/reference-analysis.test.ts` — spectral centroid, tempo autocorrelation, silence handling, and reference-guide normalization.
 - `index.html` — app entry document.
 - `package.json` — development scripts and dependencies.
 - `.github/workflows/deploy.yml` — GitHub Actions test/build/Pages deployment workflow.
@@ -164,7 +178,7 @@ The user requested the next Generative Music Engine milestone to prioritize **mu
 - Example source: logistic map, seed 42, black-key family, automatic mode. Example chord path: `0-1-4-1-3-1-4-0`.
 - The C++ score generator is symbolic only and does not render audio. Its score path is available through the opt-in A/B selector; the C++ scientific-signal analyzer is also used by the live browser overlay. TypeScript remains the production music generator.
 
-**Current next action:** ask the user to inspect the new signal-analysis panel and listen to the existing mathematical experiments. Confirm that the activity envelope and playhead feel synchronized and that the displayed period metrics are meaningful. Keep the TypeScript music engine as the production default. Do not add a physical-science experiment or infer scientific model parameters until the user supplies/approves the source equations, units and assumptions.
+**Current next action:** ask the user to test the reference-media panel with one short audio file and one short video file. Verify local preview, video audio capture, synchronized motion/energy timeline, BPM confidence, and reference-guide ON/OFF behavior. Listen to the generated result with the guide enabled and disabled; confirm the mathematical source still leads. Keep TypeScript as the production music engine. Do not claim all media codecs work in every browser or that tests prove perceptual quality.
 
 
 ### Scientific signal analysis implementation
@@ -202,7 +216,7 @@ Current implementation design:
 Preserve:
 - Determinism for fixed mode, seed and controls; mathematics remains the source of musical ideas.
 - The 16-bar/30-second four-movement form, conductor's maximum two supporting roles per phrase, independent instrument toggles/mixer, live/offline event parity, and +14 dB master chain.
-- No AI music generation or downloaded audio samples.
+- No AI music generation or downloaded audio samples. User-selected reference media is analyzed locally only; never upload it or reuse it as an instrument sample.
 - Tests validate event-level relationships, not perceived musical quality; the user must audition white-key and black-key modes and all instrument layers.
 
 **Next action:** ask the user to audition the white-key family in automatic mode, black-key family in automatic mode, and manual root/mode overrides. Listen specifically for the white-key B–F tension being intentional rather than accidental, and for every pitched accompaniment role to remain harmonically connected. Do not claim perceptual success from tests alone.
