@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   analyzeSpectralTimeline,
+  averageSpectralWindow,
+  downsampleForSignalCore,
   buildReferenceGuide,
   estimateTempoBpm,
   type ReferenceTimelineFrame
@@ -69,6 +71,42 @@ describe("reference media signal analysis", () => {
     expect(Math.min(...first)).toBeGreaterThanOrEqual(0);
     expect(Math.max(...first)).toBeLessThanOrEqual(1);
     expect(first[0]).toBeLessThan(first[127]);
+  });
+
+  it("averages every spectral frame across its matching timeline window", () => {
+    const frames = [
+      { startSample: 0, endSample: 100, startFraction: 0, endFraction: 0.25,
+        rms: 0.1, spectralCentroidHz: 100, lowBandEnergy: 1, midBandEnergy: 0,
+        highBandEnergy: 0, onsetStrength: 0.2 },
+      { startSample: 100, endSample: 200, startFraction: 0.25, endFraction: 0.5,
+        rms: 0.3, spectralCentroidHz: 300, lowBandEnergy: 0, midBandEnergy: 1,
+        highBandEnergy: 0, onsetStrength: 0.4 },
+      { startSample: 200, endSample: 300, startFraction: 0.5, endFraction: 0.75,
+        rms: 0.5, spectralCentroidHz: 500, lowBandEnergy: 0, midBandEnergy: 0,
+        highBandEnergy: 1, onsetStrength: 0.6 },
+      { startSample: 300, endSample: 400, startFraction: 0.75, endFraction: 1,
+        rms: 0.7, spectralCentroidHz: 700, lowBandEnergy: 0.5, midBandEnergy: 0.5,
+        highBandEnergy: 0, onsetStrength: 0.8 }
+    ];
+    expect(averageSpectralWindow(frames, 0, 0.5)).toMatchObject({
+      rms: 0.2, spectralCentroidHz: 200, lowBandEnergy: 0.5,
+      midBandEnergy: 0.5, highBandEnergy: 0, onsetStrength: 0.3
+    });
+    expect(averageSpectralWindow(frames, 0.25, 0.75).spectralCentroidHz).toBe(400);
+  });
+
+  it("keeps the C++ signal buffer bounded without reducing the browser FFT sample clock", () => {
+    const samples = Float32Array.from({ length: 1_000 }, (_, index) => Math.sin(index * 0.1));
+    const reduced = downsampleForSignalCore(samples, 12_000, 200);
+    expect(reduced.samples).toHaveLength(200);
+    expect(reduced.factor).toBe(5);
+    expect(reduced.sampleRateHz).toBe(2_400);
+    expect(reduced.samples[0]).toBeCloseTo(
+      samples.slice(0, 5).reduce((sum, value) => sum + value, 0) / 5
+    );
+    const unchanged = downsampleForSignalCore(samples, 12_000, 1_000);
+    expect(unchanged.samples).toBe(samples);
+    expect(unchanged.sampleRateHz).toBe(12_000);
   });
 
   it("rejects invalid sample rates and undersized decoded audio", () => {

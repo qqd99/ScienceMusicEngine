@@ -5,7 +5,8 @@ export const REFERENCE_TIMELINE_WINDOWS = 128;
 export const MAX_REFERENCE_AUDIO_SECONDS = 600;
 export const MAX_REFERENCE_VIDEO_SECONDS = 180;
 export const MAX_REFERENCE_FILE_BYTES = 150 * 1024 * 1024;
-const MAX_ANALYSIS_SAMPLES = 900_000;
+export const MAX_REFERENCE_ANALYSIS_SAMPLES = 7_200_000;
+export const MAX_SIGNAL_CORE_SAMPLES = 900_000;
 
 export interface ReferenceVisualSample {
   timeSeconds: number;
@@ -66,6 +67,84 @@ export interface SpectralTimeline {
   averageRms: number;
   estimatedTempoBpm: number | null;
   tempoConfidence: number;
+}
+
+export interface DownsampledReferenceSignal {
+  samples: Float32Array;
+  sampleRateHz: number;
+  factor: number;
+}
+/** Box-filter and decimate only the C++ signal-core copy; retain the full 12 kHz
+ * stream for FFT bands and onset analysis so long references do not lose highs. */
+export function downsampleForSignalCore(
+  samples: Float32Array,
+  sampleRateHz: number,
+  maximumSamples = MAX_SIGNAL_CORE_SAMPLES
+): DownsampledReferenceSignal {
+  if (!Number.isInteger(maximumSamples) || maximumSamples < 128) {
+    throw new RangeError("Signal-core sample capacity must be an integer of at least 128.");
+  }
+  if (!Number.isFinite(sampleRateHz) || sampleRateHz <= 0) {
+    throw new RangeError("Reference audio sample rate must be positive and finite.");
+  }
+  if (samples.length < 128) {
+    throw new RangeError("Reference audio must contain at least 128 decoded samples.");
+  }
+  const factor = Math.max(1, Math.ceil(samples.length / maximumSamples));
+  if (factor === 1) return { samples, sampleRateHz, factor };
+  const count = Math.ceil(samples.length / factor);
+  const reduced = new Float32Array(count);
+  for (let output = 0; output < count; output += 1) {
+    const start = output * factor;
+    const end = Math.min(samples.length, start + factor);
+    let sum = 0;
+    for (let input = start; input < end; input += 1) sum += samples[input];
+    reduced[output] = sum / (end - start);
+  }
+  return { samples: reduced, sampleRateHz: sampleRateHz / factor, factor };
+}
+
+export type SpectralWindowMetrics = Pick<
+  SpectralFrame,
+  "rms" | "spectralCentroidHz" | "lowBandEnergy" |
+  "midBandEnergy" | "highBandEnergy" | "onsetStrength"
+>;
+/** Time-weighted average of every FFT frame overlapping a normalized timeline window. */
+export function averageSpectralWindow(
+  frames: readonly SpectralFrame[],
+  startFraction: number,
+  endFraction: number
+): SpectralWindowMetrics {
+  if (!Number.isFinite(startFraction) || !Number.isFinite(endFraction) ||
+      startFraction < 0 || endFraction > 1 || startFraction >= endFraction) {
+    throw new RangeError("Spectral timeline window must be a valid normalized interval.");
+  }
+  const keys: (keyof SpectralWindowMetrics)[] = [
+    "rms", "spectralCentroidHz", "lowBandEnergy",
+    "midBandEnergy", "highBandEnergy", "onsetStrength"
+  ];
+  const totals: Record<keyof SpectralWindowMetrics, number> = {
+    rms: 0, spectralCentroidHz: 0, lowBandEnergy: 0,
+    midBandEnergy: 0, highBandEnergy: 0, onsetStrength: 0
+  };
+  let totalWeight = 0;
+  for (const frame of frames) {
+    const overlap = Math.max(0,
+      Math.min(endFraction, frame.endFraction) -
+      Math.max(startFraction, frame.startFraction)
+    );
+    if (overlap <= 0) continue;
+    totalWeight += overlap;
+    for (const key of keys) totals[key] += frame[key] * overlap;
+  }
+  if (totalWeight <= 0) {
+    return {
+      rms: 0, spectralCentroidHz: 0, lowBandEnergy: 0,
+      midBandEnergy: 0, highBandEnergy: 0, onsetStrength: 0
+    };
+  }
+  for (const key of keys) totals[key] /= totalWeight;
+  return totals;
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {
@@ -179,7 +258,7 @@ export function analyzeSpectralTimeline(
     throw new RangeError("Reference audio must contain at least 128 decoded samples.");
   }
   const frameSize = Math.min(2048, highestPowerOfTwo(samples.length));
-  const hopSize = Math.max(64, Math.floor(frameSize / 4));
+  const hopSize = Math.max(128, Math.floor(frameSize / 4));
   const real = new Float64Array(frameSize);
   const imaginary = new Float64Array(frameSize);
   const window = new Float64Array(frameSize);
@@ -348,16 +427,17 @@ export async function analyzeReferenceSamples(
     warnings?: readonly string[];
   }
 ): Promise<ReferenceMediaAnalysis> {
-  if (samples.length > MAX_ANALYSIS_SAMPLES) {
-    throw new RangeError("Reference audio exceeds the safe analysis sample limit.");
+  if (samples.length > MAX_REFERENCE_ANALYSIS_SAMPLES) {
+    throw new RangeError("Reference audio exceeds the 10-minute analysis memory limit.");
   }
   const spectral = analyzeSpectralTimeline(samples, sampleRateHz);
   const warnings = [...(metadata.warnings ?? [])];
   let signal: ScientificSignalAnalysis | null = null;
   try {
+    const coreInput = downsampleForSignalCore(samples, sampleRateHz);
     signal = await analyzeScientificSignal({
-      channels: [{ id: "reference-audio", unit: "normalized amplitude", samples }],
-      sampleRateHz
+      channels: [{ id: "reference-audio", unit: "normalized amplitude", samples: coreInput.samples }],
+      sampleRateHz: coreInput.sampleRateHz
     }, REFERENCE_TIMELINE_WINDOWS);
   } catch (error) {
     warnings.push("C++/WebAssembly signal analysis was unavailable; browser spectral analysis is still complete.");
@@ -371,17 +451,9 @@ export async function analyzeReferenceSamples(
   for (let index = 0; index < windows; index += 1) {
     const startFraction = index / windows;
     const endFraction = (index + 1) / windows;
-    const spectralIndex = Math.min(
-      spectral.frames.length - 1,
-      Math.floor(((index + 0.5) / windows) * spectral.frames.length)
-    );
-    const spectralSlice = spectral.frames.length
-      ? [spectral.frames[spectralIndex]]
-      : [];
+    const spectralWindow = averageSpectralWindow(spectral.frames, startFraction, endFraction);
     const signalFrame = signalFrames[index];
-    const average = (key: keyof SpectralFrame) => mean(
-      spectralSlice.map(frame => Number(frame[key]))
-    );
+    const average = (key: keyof SpectralWindowMetrics) => spectralWindow[key];
     const sampleStart = Math.floor(index * samples.length / windows);
     const sampleEnd = Math.max(sampleStart + 1, Math.floor((index + 1) * samples.length / windows));
     let waveformMinimum = 1;

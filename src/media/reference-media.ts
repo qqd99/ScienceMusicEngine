@@ -2,6 +2,7 @@ import {
   MAX_REFERENCE_AUDIO_SECONDS,
   MAX_REFERENCE_FILE_BYTES,
   MAX_REFERENCE_VIDEO_SECONDS,
+  MAX_REFERENCE_ANALYSIS_SAMPLES,
   type ReferenceVisualSample
 } from "./reference-analysis";
 
@@ -90,12 +91,13 @@ export async function prepareMonoReferenceAudio(
       buffer.duration > MAX_REFERENCE_AUDIO_SECONDS) {
     throw new RangeError("Audio references must be between a fraction of a second and 10 minutes.");
   }
-  const targetRate = Math.min(12_000, Math.floor(900_000 / buffer.duration));
-  if (targetRate < 1_000) {
-    throw new RangeError("This recording is too long to analyze safely in the browser.");
-  }
+  // Preserve a useful 6 kHz Nyquist limit even for the full 10-minute allowance.
+  // The smaller C++ ABI copy is independently decimated after this browser FFT input.
+  const targetRate = 12_000;
   const frameCount = Math.max(128, Math.floor(buffer.duration * targetRate));
-  if (frameCount > 900_000) throw new RangeError("Reference audio exceeds the analysis memory limit.");
+  if (frameCount > MAX_REFERENCE_ANALYSIS_SAMPLES) {
+    throw new RangeError("Reference audio exceeds the 10-minute analysis memory limit.");
+  }
   const offline = new OfflineAudioContext(1, frameCount, targetRate);
   const source = offline.createBufferSource();
   source.buffer = buffer;
