@@ -135,7 +135,19 @@ The user requested the next Generative Music Engine milestone to prioritize **mu
 - Native build: `cmake -S cpp -B build/cpp`; native tests: `ctest --test-dir build/cpp --output-on-failure`; demo: `./build/cpp/science_music_demo --seed 42 --collection black --mode auto --output score.csv`.
 - GitHub Actions must run the native CMake build, CTest suite and demo smoke test alongside the existing TypeScript/Vite checks before deployment.
 
-**Next action:** inspect the GitHub Actions run for the commit that adds the C++ module. Fix any native compiler/test failures before adding more features. Once native behavior is stable, the next architectural step is a WebAssembly adapter with event-level parity tests; preserve the TypeScript browser path until the adapter is actually integrated. Tests cannot prove that the resulting music sounds good; eventually audition the C++ score through the existing synthesizer.
+### Last verified C++ musical-intelligence core
+
+- Public API and CMake skeleton: `f3b6babb8d1ab403e312819eaede9cdba34d15aa`.
+- Core implementation: `b727867b12ac0ba49ec2afe529eb8089f3c22291`.
+- CLI example and native test suite: `ff9fbca63ab15b84ee07f4b5363f8411e1bd12a5`.
+- CI/docs integration: `7915ea6d0d2044cc655175b2017e28ade3d01740`.
+- CMake include-path correction: `1e3e7b098240e4aea50599f3d0e26b4b522818f8`.
+- GitHub Actions run **#134** completed successfully: all **55 existing TypeScript tests** passed, the Vite production build passed, the C++17 library and CLI compiled, all **8 native test groups** passed under CTest, the CLI smoke test generated **164 symbolic events** across 16 bars, and GitHub Pages deployment succeeded.
+- The smoke-test score demonstrated conductor variation: the climax reduced to bass-only in one phrase while opening/development/reprise phrases selected different supporting combinations. Plucked and analog answers are mutually exclusive within a phrase.
+- Example source: logistic map, seed 42, black-key family, automatic mode. Example chord path: `0-1-4-1-3-1-4-0`.
+- The native core is symbolic only and does not render audio. The deployed browser application still uses its existing TypeScript/Web Audio implementation; the C++ module is not yet connected to the live UI.
+
+**Next action:** implement and parity-test a WebAssembly adapter only when ready to connect the C++ score to the browser. Keep the existing TypeScript engine operational until the adapter is verified. Once native behavior is stable, the next architectural step is a WebAssembly adapter with event-level parity tests; preserve the TypeScript browser path until the adapter is actually integrated. Tests cannot prove that the resulting music sounds good; eventually audition the C++ score through the existing synthesizer.
 
 The user approved a hybrid tonal-center system and shared musical intelligence for white-key and black-key improvisation.
 
