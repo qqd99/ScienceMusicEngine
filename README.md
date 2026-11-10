@@ -79,7 +79,7 @@ The CSV contains beat positions, durations, MIDI pitches, velocities, panning, m
 
 The C ABI also exposes a packed-array entry point so JavaScript can pass source values and generation options without relying on compiler-specific C struct offsets. The TypeScript adapter in src/wasm/bridge.ts loads the Emscripten module on demand and maps symbolic MIDI events into the browser engine's existing NoteEvent representation (beats to seconds, MIDI to frequency, and C++ roles to browser voices).
 
-This bridge is deliberately opt-in. It does not change the live UI or replace generateComposition(); the existing TypeScript/Web Audio engine remains the default until the native/WASM event parity checks pass and the C++ score has been auditioned through the existing synthesizer.
+This bridge is deliberately opt-in. It does not change the live UI or replace generateComposition(); native/WASM event parity now passes in CI, but the existing TypeScript/Web Audio engine remains the default until the C++ score has been auditioned through the existing synthesizer and a live rollout is explicitly approved.
 
 Requirements: Node.js 20+, CMake, a C++17 compiler, and Emscripten 3.1.74. Build the native reference executable first, then compile and test the WASM target:
 

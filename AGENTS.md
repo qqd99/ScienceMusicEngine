@@ -152,10 +152,12 @@ The user requested the next Generative Music Engine milestone to prioritize **mu
 - Example source: logistic map, seed 42, black-key family, automatic mode. Example chord path: `0-1-4-1-3-1-4-0`.
 - The native core is symbolic only and does not render audio. The deployed browser application still uses its existing TypeScript/Web Audio implementation; the C++ module is not yet connected to the live UI.
 
-**Current next action:** run the Emscripten build and native-versus-WASM event parity check on this branch, then ask the user to audition C++-generated scores through the existing synthesizer. Do not switch the live UI to the C++ engine until the parity checks pass and the user approves the listening-based rollout.
+**Current next action:** ask the user to audition C++-generated scores through the existing synthesizer and compare the result with the current TypeScript engine. Native/WASM event parity and the production Vite build already pass in CI; do not switch the live UI to the C++ engine until the listening test is complete and the user approves the rollout.
 
 ### Experimental WebAssembly bridge (not active in the live UI)
 
+- Implementation branch: feat/wasm-bridge; pull request: https://github.com/qqd99/ScienceMusicEngine/pull/1 (open, not merged).
+- GitHub Actions run #138 for commit f412d2b7e11944c4dfc2a2c9328ad07f5d957e1d completed successfully: TypeScript tests, native C++ build/CTest, native CLI smoke test, Emscripten build, native/WASM event parity, and Vite production build all passed. Pages deployment was correctly skipped for the pull request.
 - The packed entry point is declared in intelligence_c.h as sme_generate_score_packed. Its options are a fixed 11-word uint32 array; event records are eight doubles and tonal metadata is seven doubles. This avoids JavaScript depending on wasm32 C struct padding.
 - The C++ C ABI remains caller-buffer-owned. JavaScript allocates source, options, count, tonal metadata and event buffers with _malloc, checks status codes, copies all returned values into JS-owned arrays, then releases every pointer in a finally block. The module retains no JS buffers.
 - Emscripten builds a modularized ES module and companion .wasm file into public/wasm. Generated artifacts are ignored and are created by scripts/build-wasm.sh.
