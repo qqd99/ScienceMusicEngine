@@ -75,6 +75,12 @@ Generate a deterministic symbolic score CSV:
 
 The CSV contains beat positions, durations, MIDI pitches, velocities, panning, musical roles and phrase identifiers. It is an event score, not an audio file. An experimental WebAssembly adapter is available as a separate opt-in build and is covered by a native-versus-WASM event parity check; the existing TypeScript/Web Audio browser app remains the live product until the adapter is explicitly integrated and auditioned.
 
+### A/B audition mode
+
+The app includes an opt-in engine selector for comparing the TypeScript baseline with the C++/WebAssembly candidate. Select **C++ / WebAssembly · audition candidate** and use the same Play / Export WAV controls. Both engines receive the same TypeScript-generated mathematical sample sequence, UI seed, tempo, root/mode, note collection, instrument switches, sound profile, mixer levels and master volume. The WASM engine converts its symbolic MIDI score into the existing browser audio events and uses the same Web Audio synthesizer and WAV renderer.
+
+The C++ engine owns its own arrangement, phrase conductor and 16-bar structure, so the TypeScript-only arrangement, expression and conductor toggles are paused during a WASM audition. The Shepard illusion remains TypeScript-only. The selector defaults to TypeScript; the live product is not switched by this audition feature. Compare both versions by replaying them at the same settings and seed. Subjective sound quality still requires a human listening test.
+
 ### Experimental WebAssembly bridge
 
 The C ABI also exposes a packed-array entry point so JavaScript can pass source values and generation options without relying on compiler-specific C struct offsets. The TypeScript adapter in src/wasm/bridge.ts loads the Emscripten module on demand and maps symbolic MIDI events into the browser engine's existing NoteEvent representation (beats to seconds, MIDI to frequency, and C++ roles to browser voices).
