@@ -10,7 +10,7 @@ add_library(science_music_intelligence STATIC
     src/c_api.cpp
 )
 target_include_directories(science_music_intelligence PUBLIC
-    \${CMAKE_CURRENT_SOURCE_DIR}/include
+    include
 )
 set_target_properties(science_music_intelligence PROPERTIES
     POSITION_INDEPENDENT_CODE ON
