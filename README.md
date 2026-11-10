@@ -73,7 +73,7 @@ Generate a deterministic symbolic score CSV:
 ./build/cpp/science_music_demo --seed 42 --collection black --mode auto --output score.csv
 ```
 
-The CSV contains beat positions, durations, MIDI pitches, velocities, panning, musical roles and phrase identifiers. It is an event score, not an audio file. An experimental WebAssembly adapter is available as a separate opt-in build and is covered by a native-versus-WASM event parity check; the existing TypeScript/Web Audio browser app remains the live product until the adapter is explicitly integrated and auditioned.
+The CSV contains beat positions, durations, MIDI pitches, velocities, panning, musical roles and phrase identifiers. It is an event score, not an audio file. The browser now includes an opt-in A/B audition selector for the experimental WebAssembly engine; the TypeScript/Web Audio generator remains the production default until the user approves a switch after listening.
 
 ### A/B audition mode
 
@@ -85,7 +85,7 @@ The C++ engine owns its own arrangement, phrase conductor and 16-bar structure, 
 
 The C ABI also exposes a packed-array entry point so JavaScript can pass source values and generation options without relying on compiler-specific C struct offsets. The TypeScript adapter in src/wasm/bridge.ts loads the Emscripten module on demand and maps symbolic MIDI events into the browser engine's existing NoteEvent representation (beats to seconds, MIDI to frequency, and C++ roles to browser voices).
 
-This bridge is deliberately opt-in. It does not change the live UI or replace generateComposition(); native/WASM event parity now passes in CI, but the existing TypeScript/Web Audio engine remains the default until the C++ score has been auditioned through the existing synthesizer and a live rollout is explicitly approved.
+This bridge is deliberately opt-in. It adds a separate engine selector for audition and does not replace generateComposition() or change the production default. Native/WASM event parity passes in CI, and both engines use the existing synthesizer; the TypeScript/Web Audio engine remains the default until the C++ score has been auditioned and a live engine switch is explicitly approved.
 
 Requirements: Node.js 20+, CMake, a C++17 compiler, and Emscripten 3.1.74. Build the native reference executable first, then compile and test the WASM target:
 
