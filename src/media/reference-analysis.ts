@@ -155,7 +155,9 @@ export function estimateTempoBpm(
     }
     const denominator = Math.sqrt(energyA * energyB);
     const score = denominator > 1e-12 ? dot / denominator : 0;
-    if (score > bestScore) {
+    // When half/double-time candidates are equally periodic, prefer the
+    // shorter lag (faster beat) rather than drifting to a half-tempo alias.
+    if (score > bestScore + 1e-6) {
       bestScore = score;
       bestLag = lag;
     }
