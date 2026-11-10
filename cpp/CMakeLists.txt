@@ -30,3 +30,25 @@ target_link_libraries(science_music_tests PRIVATE science_music_intelligence)
 
 enable_testing()
 add_test(NAME science_music_intelligence_tests COMMAND science_music_tests)
+
+if(EMSCRIPTEN)
+    set(SME_WASM_OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../public/wasm" CACHE PATH
+        "Directory for the browser-loadable WebAssembly module")
+    file(MAKE_DIRECTORY "${SME_WASM_OUTPUT_DIR}")
+
+    add_executable(science_music_wasm src/wasm_entry.cpp)
+    target_link_libraries(science_music_wasm PRIVATE science_music_intelligence)
+    set_target_properties(science_music_wasm PROPERTIES
+        OUTPUT_NAME science_music_wasm
+        RUNTIME_OUTPUT_DIRECTORY "${SME_WASM_OUTPUT_DIR}"
+    )
+    target_link_options(science_music_wasm PRIVATE
+        "-sMODULARIZE=1"
+        "-sEXPORT_ES6=1"
+        "-sENVIRONMENT=web,worker,node"
+        "-sALLOW_MEMORY_GROWTH=1"
+        "-sNO_EXIT_RUNTIME=1"
+        "-sFILESYSTEM=0"
+        "-sEXPORTED_FUNCTIONS=['_main','_sme_generate_score_packed','_malloc','_free']"
+    )
+endif()

@@ -1,4 +1,5 @@
-import { generateComposition, type Mode, type NoteCollection, type TonalModeChoice } from "./math";
+import { generateComposition, type Composition, type Mode, type NoteCollection, type TonalModeChoice } from "./math";
+import { generateWasmComposition, type WasmGenerationOptions } from "./wasm/bridge";
 import { DEFAULT_INSTRUMENTS, DEFAULT_INSTRUMENT_LEVELS, DEFAULT_SOUND_PROFILE, MusicPlayer, renderCompositionWav, getConductorSection, type InstrumentSettings, type InstrumentLevels, type SoundProfile } from "./audio";
 import "./style.css";
 
@@ -9,6 +10,9 @@ let playing = false;
 let visualValues: number[] = [];
 let animationFrame = 0;
 let currentSeed = 0.314159;
+type AuditionEngine = "typescript" | "wasm";
+let generationToken = 0;
+let auditionLoading = false;
 let richInstrumentsEnabled = true;
 let musicalArrangementEnabled = true;
 let musicalExpressionEnabled = true;
@@ -46,7 +50,7 @@ app.innerHTML = `
           <label>Note collection<select id="scale"><option value="white-key" selected>White-key family · 7 notes</option><option value="black-key">Black-key family · 5 notes</option></select></label>
           <label>Tonal character<select id="tonal-mode"><option value="auto" selected>Automatic · major / minor</option><option value="major">Major</option><option value="minor">Minor</option></select></label>
         </div><p class="tonality-readout" id="tonality-readout">AUTOMATIC TONAL CENTER · WHITE-KEY FAMILY</p><p class="instrument-note">The conductor reads the mathematical contour to infer a key and major/minor character. Choose a note to lock the tonal center, or lock only the character. White-key mode is diatonic; black-key mode is pentatonic. Every pitched instrument shares the resulting harmony.</p><div class="sound-profile"><label for="sound-profile">SOUND CHARACTER</label><select id="sound-profile"><option value="hybrid-cinematic" selected>Hybrid Cinematic</option><option value="natural">Natural / Organic</option><option value="electronic">Electronic / Synth</option></select><p class="instrument-note">Changes the synthesis character of all five instruments without changing the mathematical notes.</p></div><div class="feature-controls"><div class="feature-heading">04 / SOUND FEATURES</div><div class="feature-buttons"><button id="toggle-rich" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>RICH INSTRUMENTS</b><small>Overtones · brighter timbre</small></span><strong>ON</strong></button><button id="toggle-arrangement" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>MUSICAL ARRANGEMENT</b><small>Sequence-derived harmony · bass · chords · drums</small></span><strong>ON</strong></button><button id="toggle-expression" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>MUSICAL EXPRESSION</b><small>16-bar form · transitions · climax · cadence</small></span><strong>ON</strong></button><button id="toggle-conductor" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>ENSEMBLE CONDUCTOR</b><small>Selective entrances · rhythmic gaps · musical space</small></span><strong>ON</strong></button><button id="instrument-piano" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>PIANO</b><small>Lead melody · harmonic piano tone</small></span><strong>ON</strong></button><button id="instrument-analog" class="feature-toggle" type="button" aria-pressed="false"><span class="toggle-indicator"></span><span><b>WARM ANALOG</b><small>Counterline · warm sustained color</small></span><strong>OFF</strong></button><button id="instrument-plucked" class="feature-toggle" type="button" aria-pressed="false"><span class="toggle-indicator"></span><span><b>PLUCKED STRINGS</b><small>Call-and-response · plucked accents</small></span><strong>OFF</strong></button><button id="instrument-cinematicBass" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>CINEMATIC BASS</b><small>Harmonic roots · cinematic foundation</small></span><strong>ON</strong></button><button id="instrument-atmosphere" class="feature-toggle enabled" type="button" aria-pressed="true"><span class="toggle-indicator"></span><span><b>ATMOSPHERIC PADS</b><small>Sustained chords · evolving atmosphere</small></span><strong>ON</strong></button></div><div class="conductor-readout"><span>ENSEMBLE PHASE</span><strong id="conductor-phase">READY</strong><small id="conductor-detail">Adaptive score analysis · roles reconsidered at phrase boundaries</small></div><div class="instrument-mixer"><div class="feature-heading">INSTRUMENT MIXER</div><div class="instrument-levels"><label for="level-piano">PIANO <output id="level-piano-value">90%</output><input id="level-piano" data-instrument-level="piano" type="range" min="0" max="150" value="90"/></label><label for="level-analog">WARM ANALOG <output id="level-analog-value">72%</output><input id="level-analog" data-instrument-level="analog" type="range" min="0" max="150" value="72"/></label><label for="level-plucked">PLUCKED STRINGS <output id="level-plucked-value">82%</output><input id="level-plucked" data-instrument-level="plucked" type="range" min="0" max="150" value="82"/></label><label for="level-cinematicBass">CINEMATIC BASS <output id="level-cinematicBass-value">90%</output><input id="level-cinematicBass" data-instrument-level="cinematicBass" type="range" min="0" max="150" value="90"/></label><label for="level-atmosphere">ATMOSPHERIC PADS <output id="level-atmosphere-value">72%</output><input id="level-atmosphere" data-instrument-level="atmosphere" type="range" min="0" max="150" value="72"/></label></div></div><p class="instrument-note">Piano leads the melody; plucked strings answer between phrases; warm analog adds a quiet counterline; bass anchors harmonic roots; pads sustain the chord atmosphere. Each part is generated deterministically from the same mathematical material.</p></div><div class="seed-row"><span>DETERMINISTIC SEED</span><code id="seed-value">0.314159</code><button id="random-seed" class="text-button">↻ NEW SEED</button></div></div>
-        <div class="volume-control"><label for="master-volume"><span>OUTPUT VOLUME</span><output id="volume-value">115%</output></label><input id="master-volume" type="range" min="0" max="150" value="115" step="1" aria-label="Master music volume"/><small class="instrument-note">+14 dB fixed master boost · peak-limited</small></div><div class="transport"><div class="transport-left"><button id="play" class="play-button"><span>▶</span> PLAY EXPERIMENT</button><button id="export-wav" class="export-button">↓ EXPORT WAV</button></div><div class="transport-status"><span class="status-light" id="status-light"></span><span id="status">READY TO GENERATE</span></div></div>
+        <div class="audition-panel"><div class="feature-heading">05 / ENGINE A/B AUDITION</div><label class="audition-label" for="engine-select">GENERATOR</label><select id="engine-select"><option value="typescript" selected>TypeScript · production baseline</option><option value="wasm">C++ / WebAssembly · audition candidate</option></select><p class="instrument-note">Both engines receive the same mathematical samples, seed, tempo, tonal controls, instrument switches, sound character and mixer. Switch engines and replay to compare the arrangements.</p><p class="engine-summary" id="engine-summary">TYPESCRIPT BASELINE · READY FOR A/B COMPARISON</p><p class="engine-note" id="engine-note">Production baseline. The C++ candidate remains opt-in.</p></div><div class="volume-control"><label for="master-volume"><span>OUTPUT VOLUME</span><output id="volume-value">115%</output></label><input id="master-volume" type="range" min="0" max="150" value="115" step="1" aria-label="Master music volume"/><small class="instrument-note">+14 dB fixed master boost · peak-limited</small></div><div class="transport"><div class="transport-left"><button id="play" class="play-button" aria-pressed="false"><span id="play-icon">▶</span> <span id="play-label">PLAY TYPESCRIPT</span></button><button id="export-wav" class="export-button">↓ EXPORT WAV</button></div><div class="transport-status"><span class="status-light" id="status-light"></span><span id="status">READY TO GENERATE</span></div></div>
       </section>
     </section>
     <footer><span>SCIENCE MUSIC ENGINE <span class="muted">· MATHEMATICS LAB</span></span><span>BUILT WITH WEB AUDIO <span class="muted">· V1.0.0</span></span></footer>
@@ -64,6 +68,91 @@ function options() {
     noteCollection: ($("#scale") as HTMLSelectElement).value as NoteCollection,
     tonalMode: ($("#tonal-mode") as HTMLSelectElement).value as TonalModeChoice,
     seed: currentSeed,
+    richInstruments: richInstrumentsEnabled,
+    musicalArrangement: musicalArrangementEnabled,
+    musicalExpression: musicalExpressionEnabled
+  };
+}
+
+function selectedEngine(): AuditionEngine {
+  return ($("#engine-select") as HTMLSelectElement).value as AuditionEngine;
+}
+function updatePlayButtonState() {
+  const button = $("#play") as HTMLButtonElement;
+  const isPlaying = player.isPlaying;
+  $("#play-icon").textContent = isPlaying ? "■" : "▶";
+  $("#play-label").textContent = auditionLoading
+    ? (selectedEngine() === "wasm" ? "LOADING C++ / WASM…" : "STARTING AUDIO…")
+    : isPlaying
+      ? "STOP AUDITION"
+      : selectedEngine() === "wasm" ? "PLAY C++ / WASM" : "PLAY TYPESCRIPT";
+  button.disabled = auditionLoading;
+  button.classList.toggle("is-playing", isPlaying);
+  button.setAttribute("aria-pressed", String(isPlaying));
+}
+function updateEngineSummary(composition?: Composition) {
+  const engine = selectedEngine();
+  const label = engine === "wasm" ? "C++ / WASM CANDIDATE" : "TYPESCRIPT BASELINE";
+  const bpm = Number(($("#bpm") as HTMLInputElement).value);
+  const seed = Math.round(currentSeed * 1_000_000);
+  const tonal = composition?.tonality
+    ? " · " + composition.tonality.scale.toUpperCase()
+    : "";
+  const eventCount = composition ? " · " + composition.events.length + " SCORE EVENTS" : "";
+  $("#engine-summary").textContent = label + " · " + bpm + " BPM · SEED " + seed + tonal + eventCount;
+}
+function updateEngineControls() {
+  const select = $("#engine-select") as HTMLSelectElement;
+  const wasmOption = select.querySelector<HTMLOptionElement>('option[value="wasm"]')!;
+  wasmOption.disabled = mode === "shepard";
+  if (mode === "shepard" && select.value === "wasm") select.value = "typescript";
+
+  const wasmSelected = selectedEngine() === "wasm";
+  for (const id of ["toggle-arrangement", "toggle-expression", "toggle-conductor"]) {
+    const control = $<HTMLButtonElement>("#" + id);
+    control.disabled = wasmSelected;
+    control.title = wasmSelected
+      ? "The C++ engine uses its own built-in arrangement, 16-bar form and phrase conductor."
+      : "";
+  }
+  $("#engine-note").textContent = wasmSelected
+    ? "C++ uses its own arrangement and phrase conductor. The three TypeScript-only structure toggles are paused during this audition."
+    : mode === "shepard"
+      ? "The Shepard illusion is a dedicated TypeScript experiment and is not part of the C++ score engine."
+      : "Production baseline. The C++ candidate remains opt-in; no production engine has been changed.";
+  updatePlayButtonState();
+  updateEngineSummary();
+}
+function wasmGenerationOptions(): WasmGenerationOptions {
+  const center = ($("#root") as HTMLSelectElement).value;
+  return {
+    // Preserve a stable integer counterpart to the fractional UI seed.
+    seed: Math.round(currentSeed * 1_000_000),
+    bpm: Number(($("#bpm") as HTMLInputElement).value),
+    collection: ($("#scale") as HTMLSelectElement).value as NoteCollection,
+    rootPitchClass: center === "auto" ? "auto" : Number(center) % 12,
+    mode: ($("#tonal-mode") as HTMLSelectElement).value as TonalModeChoice,
+    enableBass: instrumentSettings.cinematicBass,
+    enablePad: instrumentSettings.atmosphere,
+    enablePlucked: instrumentSettings.plucked,
+    enableAnalog: instrumentSettings.analog,
+    enablePercussion: true
+  };
+}
+async function generateAuditionComposition(
+  engine: AuditionEngine,
+  sourceComposition: Composition
+): Promise<Composition> {
+  if (engine === "typescript") return sourceComposition;
+  if (mode === "shepard") {
+    throw new Error("The C++ engine does not implement the dedicated Shepard illusion.");
+  }
+  const composition = await generateWasmComposition(
+    sourceComposition.values,
+    wasmGenerationOptions()
+  );
+  return {
+    ...composition,
     richInstruments: richInstrumentsEnabled,
     musicalArrangement: musicalArrangementEnabled,
     musicalExpression: musicalExpressionEnabled
@@ -125,23 +214,46 @@ function drawPlayhead(progress: number) {
 function animatePlayhead() {
   if (!player.isPlaying) { cancelAnimationFrame(animationFrame); animationFrame=0; return; }
   render();
-  $("#conductor-phase").textContent = ensembleConductorEnabled ? getConductorSection(player.getProgress()).toUpperCase() : "BYPASSED";
+  const engine = selectedEngine();
+  $("#conductor-phase").textContent = getConductorSection(player.getProgress()).toUpperCase();
   const decision = player.getCurrentConductorDecision();
-  $("#conductor-detail").textContent = ensembleConductorEnabled
-    ? (decision?.summary ?? "Analyzing the next phrase…")
-    : "Conductor bypassed · original arrangement";
+  $("#conductor-detail").textContent = engine === "wasm"
+    ? "C++ phrase plan · native arrangement and conductor"
+    : ensembleConductorEnabled
+      ? (decision?.summary ?? "Analyzing the next phrase…")
+      : "Conductor bypassed · original arrangement";
   animationFrame=requestAnimationFrame(animatePlayhead);
 }
-function updateLiveComposition() {
-  const comp=generateComposition(mode,options());
-  if (player.isPlaying) player.update(comp, masterVolume, instrumentSettings, soundProfile, instrumentLevels, ensembleConductorEnabled);
+async function updateLiveComposition() {
+  if (!player.isPlaying) {
+    updateEngineSummary();
+    return;
+  }
+  const request = ++generationToken;
+  try {
+    const sourceComposition = generateComposition(mode, options());
+    const composition = await generateAuditionComposition(selectedEngine(), sourceComposition);
+    if (request !== generationToken || !player.isPlaying) return;
+    player.update(composition, masterVolume, instrumentSettings, soundProfile, instrumentLevels, ensembleConductorEnabled);
+    updateEngineSummary(composition);
+  } catch (error) {
+    if (request === generationToken) {
+      $("#status").textContent = "ENGINE UPDATE FAILED";
+      console.error(error);
+    }
+  }
 }
 function setMode(next: Mode) {
   mode = next;
+  updateEngineControls();
   app.querySelectorAll<HTMLButtonElement>(".mode").forEach(b=>b.classList.toggle("active",b.dataset.mode===mode));
-  $("#mode-title").textContent=names[mode];$("#mode-description").textContent=descriptions[mode];render();updateLiveComposition();
+  $("#mode-title").textContent=names[mode];$("#mode-description").textContent=descriptions[mode];render();void updateLiveComposition();
 }
  app.querySelectorAll<HTMLButtonElement>(".mode").forEach(b=>b.addEventListener("click",()=>setMode(b.dataset.mode as Mode)));
+$("#engine-select").addEventListener("change", () => {
+  updateEngineControls();
+  void updateLiveComposition();
+});
 function setFeatureButton(id: string, enabled: boolean) {
   const button = $(`#${id}`) as HTMLButtonElement;
   button.classList.toggle("enabled", enabled);
@@ -194,32 +306,55 @@ $("#master-volume").addEventListener("input", () => {
 });
 $("#random-seed").addEventListener("click",()=>{currentSeed=Number(Math.random().toFixed(6));$("#seed-value").textContent=currentSeed.toFixed(6);render();updateLiveComposition();});
 $("#play").addEventListener("click",async()=>{
-  const button=$("#play") as HTMLButtonElement;
   if(player.isPlaying){
+    generationToken++;
     player.stop();playing=false;cancelAnimationFrame(animationFrame);animationFrame=0;
-    button.innerHTML="<span>▶</span> PLAY EXPERIMENT";button.classList.remove("is-playing");button.setAttribute("aria-pressed","false");
+    updatePlayButtonState();
     $("#status").textContent="STOPPED";$("#status-light").classList.remove("on");$("#conductor-phase").textContent=ensembleConductorEnabled?"READY":"BYPASSED";
     return;
   }
+  if (auditionLoading) return;
+  const request = ++generationToken;
+  const engine = selectedEngine();
+  auditionLoading = true;
+  updatePlayButtonState();
   try {
-    const composition = generateComposition(mode, options());
-    await player.play(composition, masterVolume, instrumentSettings, soundProfile, instrumentLevels, ensembleConductorEnabled);playing=true;
-    button.innerHTML="<span>■</span> STOP EXPERIMENT";button.classList.add("is-playing");button.setAttribute("aria-pressed","true");
-    $("#status").textContent=`PLAYING · LIVE 16-BAR SEQUENCE · ${Math.round(composition.duration)}s`;$("#status-light").classList.add("on");
+    const sourceComposition = generateComposition(mode, options());
+    const composition = await generateAuditionComposition(engine, sourceComposition);
+    if (request !== generationToken) return;
+    await player.play(composition, masterVolume, instrumentSettings, soundProfile, instrumentLevels, ensembleConductorEnabled);
+    playing=true;
+    updatePlayButtonState();
+    updateEngineSummary(composition);
+    const engineLabel = engine === "wasm" ? "C++ / WASM" : "TYPESCRIPT";
+    $("#status").textContent=`PLAYING · ${engineLabel} · ${composition.events.length} EVENTS · ${Math.round(composition.duration)}s`;
+    $("#status-light").classList.add("on");
     animatePlayhead();
-  } catch(error){$("#status").textContent="AUDIO COULD NOT START";console.error(error);}
+  } catch(error){
+    if (request === generationToken) {
+      $("#status").textContent = engine === "wasm" ? "WASM GENERATION FAILED" : "AUDIO COULD NOT START";
+      console.error(error);
+    }
+  } finally {
+    if (request === generationToken) {
+      auditionLoading = false;
+      updatePlayButtonState();
+    }
+  }
 });
 $("#export-wav").addEventListener("click", async () => {
   const button = $("#export-wav") as HTMLButtonElement;
   button.disabled = true;
-  button.textContent = "RENDERING WAV…";
+  button.textContent = selectedEngine() === "wasm" ? "RENDERING WASM WAV…" : "RENDERING WAV…";
   try {
-    const composition = generateComposition(mode, options());
+    const engine = selectedEngine();
+    const sourceComposition = generateComposition(mode, options());
+    const composition = await generateAuditionComposition(engine, sourceComposition);
     const wav = await renderCompositionWav(composition, masterVolume, instrumentSettings, soundProfile, instrumentLevels, ensembleConductorEnabled);
     const url = URL.createObjectURL(wav);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `science-music-${mode}-${Date.now()}.wav`;
+    link.download = `science-music-${mode}-${selectedEngine()}-${Date.now()}.wav`;
     link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1500);
     button.textContent = "✓ WAV EXPORTED";
@@ -231,4 +366,5 @@ $("#export-wav").addEventListener("click", async () => {
   }
 });
 window.addEventListener("beforeunload",()=>player.stop());
+updateEngineControls();
 render();

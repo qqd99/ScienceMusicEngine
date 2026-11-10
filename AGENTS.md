@@ -8,7 +8,7 @@
 - **Default branch:** `main`
 - **Live app:** https://qqd99.github.io/ScienceMusicEngine/
 - **Browser stack:** TypeScript, Vite, Vitest, browser-native Web Audio API.
-- **Native intelligence stack:** standalone C++17 library under `cpp/`, CMake/CTest, no third-party runtime dependencies, and a stable C ABI intended for a future WebAssembly adapter.
+- **Native intelligence stack:** standalone C++17 library under `cpp/`, CMake/CTest, no third-party runtime dependencies, and a stable two-pass C ABI with an opt-in packed-array WebAssembly bridge.
 - **Current product:** Mathematics Music Engine / Science Music Engine — a browser laboratory that turns mathematical structures into deterministic musical events and synthesizes them into original music.
 
 This is the active project. The earlier `qqd99/GenerativeMusic` repository was a separate Christmas-music experiment. The user explicitly chose to drop the random Christmas generator and start a new Mathematics Music Engine in this repository. **Do not resume Christmas carols, Christmas rotation, or Christmas-specific requirements here. Do not modify `GenerativeMusic` or `GiangSinhOnline` unless the user explicitly asks.**
@@ -72,16 +72,19 @@ The browser UI includes mathematical visualization, a moving playhead, tempo, co
 
 - `src/math.ts` — current browser-side pure mathematical generators and deterministic composition generation. Main entry point: `generateComposition()`.
 - `cpp/include/science_music/intelligence.hpp` and `cpp/src/intelligence.cpp` — standalone C++17 musical-intelligence API and implementation: tonal inference, motif development, harmony, phrase analysis, and conductor decisions.
-- `cpp/include/science_music/intelligence_c.h` and `cpp/src/c_api.cpp` — stable C ABI for native callers and a future WebAssembly boundary.
+- `cpp/include/science_music/intelligence_c.h` and `cpp/src/c_api.cpp` — two-pass struct C ABI plus a packed-array C ABI for WebAssembly; both preserve caller-owned output buffers and deterministic error codes.
+- `src/wasm/bridge.ts` — opt-in Emscripten loader, safe linear-memory ownership, and MIDI/beat-to-browser-event conversion.
+- `scripts/build-wasm.sh` and `scripts/test-wasm.mjs` — Emscripten build and native-versus-WASM event parity check.
 - `cpp/examples/generate_demo.cpp` — deterministic logistic-source CLI example that writes a symbolic score CSV.
 - `cpp/tests/intelligence_test.cpp` and `cpp/CMakeLists.txt` — native tests and CMake build.
 
-The C++ core is not yet wired into the browser app. Keep the existing TypeScript/Web Audio path operational until a future WebAssembly adapter has parity tests and is explicitly integrated.
+The C++ core is not selected by the live browser app. An opt-in Emscripten adapter now exists in src/wasm/bridge.ts; keep the existing TypeScript/Web Audio path operational until cross-target parity passes and the user has auditioned the C++ score. Do not wire it into the live UI or claim the live product uses C++ before that rollout is explicitly approved.
 - `src/audio.ts` — Web Audio synthesis, instrument settings and event resolution, ensemble conductor, live player, and OfflineAudioContext WAV renderer. Key functions include `resolveInstrumentEvents()`, `preparePlaybackEvents()`, `applyEnsembleConductor()`, `getConductorSection()`, `MusicPlayer`, and `renderCompositionWav()`.
 - `src/main.ts` — browser UI, controls, live updates, visualization/playhead, and WAV export.
 - `src/style.css` — UI styling.
 - `tests/math.test.ts` — mathematical generation, deterministic behavior, composition, and musical-form tests.
 - `tests/audio.test.ts` — instrument routing, fallbacks, conductor, and audio-event tests.
+- `tests/wasm.test.ts` — packed-score mapping, role conversion, tempo conversion, and malformed-ABI checks.
 - `index.html` — app entry document.
 - `package.json` — development scripts and dependencies.
 - `.github/workflows/deploy.yml` — GitHub Actions test/build/Pages deployment workflow.
@@ -130,10 +133,12 @@ The user requested the next Generative Music Engine milestone to prioritize **mu
 - The score has four connected movements over 16 bars: opening, development, climax and reprise/cadence.
 - The conductor analyzes each two-bar phrase and selects at most two supporting roles. Bass and pads compete with available answer space; plucked and analog lines are mutually exclusive alternatives. Decisions carry a small continuity preference from the previous phrase.
 - Pitched support notes share the resolved scale and chord frames. Percussion is a separate source-shaped rhythm role.
-- `intelligence_c.h` exposes a two-pass C ABI (query required event count, then fill caller-owned buffer), suitable for a future WebAssembly boundary.
-- The C++ module is a symbolic composition core only. It is not yet connected to the browser UI and does not render audio. Do not describe the live website as using this C++ engine until that integration is implemented and verified.
+- `intelligence_c.h` exposes the original two-pass struct C ABI and an additive packed-array C ABI for WebAssembly (11 uint32 option words, eight doubles per event, seven doubles of tonal metadata). Both use caller-owned buffers and return deterministic status codes.
+- `src/wasm/bridge.ts` is an opt-in Emscripten loader and browser-event adapter. It is not wired to the UI; it maps beat/MIDI data into the existing NoteEvent representation and owns/frees all linear-memory allocations.
+- `src/main.ts` exposes an opt-in TypeScript-versus-WASM A/B audition selector. It passes the same generated mathematical sample values and UI controls to both engines, routes both through the same `MusicPlayer`/`renderCompositionWav` synthesis path, and keeps TypeScript selected by default. The C++ engine's own arrangement/conductor remain fixed during audition; Shepard mode is TypeScript-only.
+- The C++ module is a symbolic composition core only and does not render audio. The opt-in WASM adapter is available for callers, but the live UI still uses the TypeScript engine. Do not describe the live website as using the C++ engine until a deliberate UI rollout is implemented, parity-verified and auditioned.
 - Native build: `cmake -S cpp -B build/cpp`; native tests: `ctest --test-dir build/cpp --output-on-failure`; demo: `./build/cpp/science_music_demo --seed 42 --collection black --mode auto --output score.csv`.
-- GitHub Actions must run the native CMake build, CTest suite and demo smoke test alongside the existing TypeScript/Vite checks before deployment.
+- GitHub Actions must run the TypeScript tests, native CMake build/CTest/demo smoke test, Emscripten build and native-versus-WASM event parity script before deployment.
 
 ### Last verified C++ musical-intelligence core
 
@@ -148,7 +153,18 @@ The user requested the next Generative Music Engine milestone to prioritize **mu
 - Example source: logistic map, seed 42, black-key family, automatic mode. Example chord path: `0-1-4-1-3-1-4-0`.
 - The native core is symbolic only and does not render audio. The deployed browser application still uses its existing TypeScript/Web Audio implementation; the C++ module is not yet connected to the live UI.
 
-**Next action:** implement and parity-test a WebAssembly adapter only when ready to connect the C++ score to the browser. Keep the existing TypeScript engine operational until the adapter is verified. Once native behavior is stable, the next architectural step is a WebAssembly adapter with event-level parity tests; preserve the TypeScript browser path until the adapter is actually integrated. Tests cannot prove that the resulting music sounds good; eventually audition the C++ score through the existing synthesizer.
+**Current next action:** use the opt-in A/B engine selector in the app to audition the same mathematical source through the TypeScript and C++/WASM engines. Both use the same Web Audio synthesizer and WAV renderer, with identical tempo, tonal controls, instrument switches, sound profile and mixer. Ask the user to compare both outputs; do not switch the production default until the listening test is complete and the user approves the rollout.
+
+### Experimental WebAssembly bridge (not active in the live UI)
+
+- Implementation branch: feat/wasm-bridge; pull request: https://github.com/qqd99/ScienceMusicEngine/pull/1 (open, not merged).
+- GitHub Actions run #138 for commit f412d2b7e11944c4dfc2a2c9328ad07f5d957e1d completed successfully: TypeScript tests, native C++ build/CTest, native CLI smoke test, Emscripten build, native/WASM event parity, and Vite production build all passed. Pages deployment was correctly skipped for the pull request.
+- The packed entry point is declared in intelligence_c.h as sme_generate_score_packed. Its options are a fixed 11-word uint32 array; event records are eight doubles and tonal metadata is seven doubles. This avoids JavaScript depending on wasm32 C struct padding.
+- The C++ C ABI remains caller-buffer-owned. JavaScript allocates source, options, count, tonal metadata and event buffers with _malloc, checks status codes, copies all returned values into JS-owned arrays, then releases every pointer in a finally block. The module retains no JS buffers.
+- Emscripten builds a modularized ES module and companion .wasm file into public/wasm. Generated artifacts are ignored and are created by scripts/build-wasm.sh.
+- scripts/test-wasm.mjs compares all eight event fields against the native CLI output for the same deterministic 128-value logistic source and options. Floating-point fields use a tight cross-compiler tolerance; integer fields must match exactly.
+- src/wasm/bridge.ts converts C++ beat positions/durations to seconds, MIDI pitch to frequency, and C++ roles to the existing browser voices. It is an adapter only; it does not replace generateComposition(), the live player, or WAV rendering.
+- Event parity does not establish audible quality. The next product decision requires listening to the C++ score through the existing synthesizer and preserving the current TypeScript fallback until the user approves a rollout.
 
 The user approved a hybrid tonal-center system and shared musical intelligence for white-key and black-key improvisation.
 

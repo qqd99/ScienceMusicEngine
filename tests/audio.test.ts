@@ -75,6 +75,30 @@ describe("procedural instrument controls", () => {
     expect(first.some(event => event.voice === "pad")).toBe(true);
   });
 
+  it("preserves pre-arranged WASM parts without generating duplicate support or re-conducting them", () => {
+    const base = generateComposition("mandelbrot", { seed: 0.314159 });
+    const lead = base.events.find(event => (event.voice ?? "lead") === "lead")!;
+    const suppliedParts: NoteEvent[] = [
+      { ...lead, time: 0.25, voice: "answer" },
+      { ...lead, time: 0.75, voice: "texture" },
+      { ...lead, time: 0, voice: "bass" },
+      { ...lead, time: 0, voice: "pad" },
+      { ...lead, time: 0, voice: "percussion", percussionKind: "kick" }
+    ];
+    const composition = {
+      ...base,
+      label: "wasm",
+      events: [...base.events, ...suppliedParts]
+    };
+    const settings = {
+      piano: true, analog: true, plucked: true, cinematicBass: true, atmosphere: true
+    };
+    const expected = [...composition.events].sort((a, b) => a.time - b.time);
+
+    expect(resolveInstrumentEvents(composition, settings)).toEqual(expected);
+    expect(preparePlaybackEvents(composition, settings, true)).toEqual(expected);
+  });
+
   it("keeps every pitched ensemble role inside the shared tonal collection", () => {
     const intervals: Record<string, number[]> = {
       Major: [0, 2, 4, 5, 7, 9, 11],

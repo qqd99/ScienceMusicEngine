@@ -2,6 +2,8 @@ name: Deploy Science Music Engine
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
@@ -20,7 +22,6 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm test
-      - run: npm run build
       - name: Configure C++ intelligence core
         run: cmake -S cpp -B build/cpp -DCMAKE_BUILD_TYPE=Release
       - name: Build C++ intelligence core
@@ -29,10 +30,21 @@ jobs:
         run: ctest --test-dir build/cpp --output-on-failure
       - name: Smoke-test symbolic score generator
         run: ./build/cpp/science_music_demo --seed 42 --collection black --mode auto --output build/cpp/demo-score.csv
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.74
+      - name: Build WebAssembly bridge
+        run: npm run build:wasm
+      - name: Verify native/WebAssembly event parity
+        run: npm run test:wasm
+      - name: Build browser application
+        run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
   deploy:
+    if: github.event_name != 'pull_request'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

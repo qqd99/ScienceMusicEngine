@@ -312,6 +312,119 @@ void test_c_api_two_pass_buffer_contract() {
     require(std::string(sme_intelligence_version()) == "1.0.0", "C ABI version must be stable");
 }
 
+
+void test_packed_c_api_matches_struct_abi() {
+    const auto source = logistic_source(42);
+    SME_GenerationOptions native_options{};
+    native_options.seed = 42;
+    native_options.bpm = 128;
+    native_options.collection = SME_BLACK_KEY;
+    native_options.root_pitch_class = SME_AUTO;
+    native_options.mode = SME_AUTO;
+    native_options.enable_bass = 1;
+    native_options.enable_pad = 1;
+    native_options.enable_plucked = 1;
+    native_options.enable_analog = 1;
+    native_options.enable_percussion = 1;
+
+    const uint32_t packed_options[SME_PACKED_OPTION_COUNT] = {
+        42U, 0U, 128U, SME_BLACK_KEY, 12U, 2U, 1U, 1U, 1U, 1U, 1U
+    };
+    uint32_t packed_required = 0;
+    double packed_tonality[SME_PACKED_TONALITY_STRIDE]{};
+    const int packed_query = sme_generate_score_packed(
+        source.data(), static_cast<uint32_t>(source.size()),
+        packed_options, SME_PACKED_OPTION_COUNT,
+        nullptr, 0, &packed_required, packed_tonality
+    );
+    require(packed_query == SME_BUFFER_TOO_SMALL,
+        "packed C ABI size query must report required capacity");
+    require(packed_required > 0, "packed C ABI must report a nonzero event count");
+
+    std::vector<double> packed_events(
+        static_cast<std::size_t>(packed_required) * SME_PACKED_EVENT_STRIDE
+    );
+    uint32_t packed_written = 0;
+    const int packed_fill = sme_generate_score_packed(
+        source.data(), static_cast<uint32_t>(source.size()),
+        packed_options, SME_PACKED_OPTION_COUNT,
+        packed_events.data(), packed_required, &packed_written, packed_tonality
+    );
+    require(packed_fill == SME_OK, "packed C ABI must fill a sufficiently large buffer");
+    require(packed_written == packed_required, "packed C ABI must return the written count");
+
+    std::size_t native_required = 0;
+    SME_TonalContext native_tonality{};
+    const int native_query = sme_generate_score(
+        source.data(), source.size(), &native_options,
+        nullptr, 0, &native_required, &native_tonality
+    );
+    require(native_query == SME_BUFFER_TOO_SMALL, "native C ABI query must report capacity");
+    require(native_required == packed_required, "packed and struct C ABIs must agree on event count");
+
+    std::vector<SME_Event> native_events(native_required);
+    std::size_t native_written = 0;
+    const int native_fill = sme_generate_score(
+        source.data(), source.size(), &native_options,
+        native_events.data(), native_events.size(), &native_written, &native_tonality
+    );
+    require(native_fill == SME_OK, "native C ABI must fill its event buffer");
+    require(native_written == packed_written, "both C ABIs must write the same number of events");
+
+    for (std::size_t i = 0; i < native_written; ++i) {
+        const auto& event = native_events[i];
+        const double* packed = packed_events.data() + i * SME_PACKED_EVENT_STRIDE;
+        require(std::abs(packed[0] - event.start_beat) < 1e-12, "packed start beat must match native ABI");
+        require(std::abs(packed[1] - event.duration_beats) < 1e-12, "packed duration must match native ABI");
+        require(packed[2] == event.midi_pitch, "packed MIDI pitch must match native ABI");
+        require(std::abs(packed[3] - event.velocity) < 1e-12, "packed velocity must match native ABI");
+        require(std::abs(packed[4] - event.pan) < 1e-12, "packed pan must match native ABI");
+        require(packed[5] == event.role, "packed role must match native ABI");
+        require(packed[6] == event.phrase_index, "packed phrase index must match native ABI");
+        require(packed[7] == (event.accent ? 1.0 : 0.0), "packed accent must match native ABI");
+    }
+
+    require(packed_tonality[0] == native_tonality.root_pitch_class,
+        "packed root pitch class must match native ABI");
+    require(packed_tonality[1] == native_tonality.root_midi,
+        "packed root MIDI must match native ABI");
+    require(packed_tonality[2] == native_tonality.collection,
+        "packed collection must match native ABI");
+    require(packed_tonality[3] == native_tonality.mode,
+        "packed mode must match native ABI");
+    require(std::abs(packed_tonality[4] - native_tonality.confidence) < 1e-12,
+        "packed confidence must match native ABI");
+    require(packed_tonality[5] == native_tonality.center_was_manual,
+        "packed center provenance must match native ABI");
+    require(packed_tonality[6] == native_tonality.mode_was_manual,
+        "packed mode provenance must match native ABI");
+
+    double too_small_buffer[SME_PACKED_EVENT_STRIDE];
+    std::fill(too_small_buffer, too_small_buffer + SME_PACKED_EVENT_STRIDE, -7.0);
+    uint32_t too_small_count = 0;
+    const int too_small_status = sme_generate_score_packed(
+        source.data(), static_cast<uint32_t>(source.size()),
+        packed_options, SME_PACKED_OPTION_COUNT,
+        too_small_buffer, 1, &too_small_count, nullptr
+    );
+    require(too_small_status == SME_BUFFER_TOO_SMALL,
+        "packed C ABI must report insufficient output capacity");
+    require(too_small_count == packed_required,
+        "packed C ABI must report the full required capacity");
+    require(too_small_buffer[0] == -7.0,
+        "packed C ABI must not partially write an undersized buffer");
+
+    uint32_t invalid_count = 99;
+    const int invalid_options = sme_generate_score_packed(
+        source.data(), static_cast<uint32_t>(source.size()),
+        packed_options, SME_PACKED_OPTION_COUNT - 1,
+        nullptr, 0, &invalid_count, nullptr
+    );
+    require(invalid_options == SME_INVALID_ARGUMENT,
+        "packed C ABI must reject an invalid options-array length");
+    require(invalid_count == 0, "invalid packed calls must clear output_count");
+}
+
 void test_invalid_inputs() {
     const science_music::IntelligenceEngine engine;
     science_music::GenerationOptions options;
@@ -346,6 +459,7 @@ int main() {
         test_instrument_availability_and_answer_competition();
         test_percussion_is_independent_and_source_shaped();
         test_c_api_two_pass_buffer_contract();
+        test_packed_c_api_matches_struct_abi();
         test_invalid_inputs();
         std::cout << "All C++ musical intelligence tests passed.\n";
         return EXIT_SUCCESS;

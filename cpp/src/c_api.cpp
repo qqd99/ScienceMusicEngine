@@ -100,6 +100,112 @@ int sme_generate_score(
     }
 }
 
+
+int sme_generate_score_packed(
+    const double* source_values,
+    uint32_t source_count,
+    const uint32_t* option_values,
+    uint32_t option_count,
+    double* output_events,
+    uint32_t output_capacity,
+    uint32_t* output_count,
+    double* output_tonality
+) {
+    if (output_count == nullptr) return SME_INVALID_ARGUMENT;
+    *output_count = 0;
+
+    if ((source_count > 0 && source_values == nullptr) ||
+        option_values == nullptr ||
+        option_count != SME_PACKED_OPTION_COUNT ||
+        (output_capacity > 0 && output_events == nullptr)) {
+        return SME_INVALID_ARGUMENT;
+    }
+
+    if (option_values[SME_PACKED_BPM] < 45U ||
+        option_values[SME_PACKED_BPM] > 180U ||
+        option_values[SME_PACKED_COLLECTION] > SME_BLACK_KEY ||
+        option_values[SME_PACKED_ROOT] > 12U ||
+        option_values[SME_PACKED_MODE] > 2U ||
+        option_values[SME_PACKED_ENABLE_BASS] > 1U ||
+        option_values[SME_PACKED_ENABLE_PAD] > 1U ||
+        option_values[SME_PACKED_ENABLE_PLUCKED] > 1U ||
+        option_values[SME_PACKED_ENABLE_ANALOG] > 1U ||
+        option_values[SME_PACKED_ENABLE_PERCUSSION] > 1U) {
+        return SME_INVALID_ARGUMENT;
+    }
+
+    try {
+        SME_GenerationOptions options{};
+        options.seed =
+            static_cast<uint64_t>(option_values[SME_PACKED_SEED_LOW]) |
+            (static_cast<uint64_t>(option_values[SME_PACKED_SEED_HIGH]) << 32U);
+        options.bpm = static_cast<int>(option_values[SME_PACKED_BPM]);
+        options.collection = static_cast<int>(option_values[SME_PACKED_COLLECTION]);
+        options.root_pitch_class = option_values[SME_PACKED_ROOT] == 12U
+            ? SME_AUTO
+            : static_cast<int>(option_values[SME_PACKED_ROOT]);
+        options.mode = option_values[SME_PACKED_MODE] == 2U
+            ? SME_AUTO
+            : static_cast<int>(option_values[SME_PACKED_MODE]);
+        options.enable_bass = static_cast<int>(option_values[SME_PACKED_ENABLE_BASS]);
+        options.enable_pad = static_cast<int>(option_values[SME_PACKED_ENABLE_PAD]);
+        options.enable_plucked = static_cast<int>(option_values[SME_PACKED_ENABLE_PLUCKED]);
+        options.enable_analog = static_cast<int>(option_values[SME_PACKED_ENABLE_ANALOG]);
+        options.enable_percussion = static_cast<int>(option_values[SME_PACKED_ENABLE_PERCUSSION]);
+
+        std::size_t required = 0;
+        SME_TonalContext tonality{};
+        const int query_status = sme_generate_score(
+            source_values, static_cast<std::size_t>(source_count), &options,
+            nullptr, 0, &required, &tonality
+        );
+        if (query_status != SME_BUFFER_TOO_SMALL && query_status != SME_OK) {
+            return query_status;
+        }
+        if (required > UINT32_MAX) return SME_INTERNAL_ERROR;
+
+        *output_count = static_cast<uint32_t>(required);
+        if (output_tonality != nullptr) {
+            output_tonality[0] = static_cast<double>(tonality.root_pitch_class);
+            output_tonality[1] = static_cast<double>(tonality.root_midi);
+            output_tonality[2] = static_cast<double>(tonality.collection);
+            output_tonality[3] = static_cast<double>(tonality.mode);
+            output_tonality[4] = tonality.confidence;
+            output_tonality[5] = static_cast<double>(tonality.center_was_manual);
+            output_tonality[6] = static_cast<double>(tonality.mode_was_manual);
+        }
+
+        if (output_capacity < required) return SME_BUFFER_TOO_SMALL;
+        if (required > 0 && output_events == nullptr) return SME_INVALID_ARGUMENT;
+
+        std::vector<SME_Event> events(required);
+        std::size_t written = 0;
+        const int fill_status = sme_generate_score(
+            source_values, static_cast<std::size_t>(source_count), &options,
+            events.empty() ? nullptr : events.data(), events.size(),
+            &written, &tonality
+        );
+        if (fill_status != SME_OK) return fill_status;
+        if (written != required) return SME_INTERNAL_ERROR;
+
+        for (std::size_t i = 0; i < written; ++i) {
+            const auto& event = events[i];
+            double* packed = output_events + i * SME_PACKED_EVENT_STRIDE;
+            packed[0] = event.start_beat;
+            packed[1] = event.duration_beats;
+            packed[2] = static_cast<double>(event.midi_pitch);
+            packed[3] = event.velocity;
+            packed[4] = event.pan;
+            packed[5] = static_cast<double>(event.role);
+            packed[6] = static_cast<double>(event.phrase_index);
+            packed[7] = static_cast<double>(event.accent);
+        }
+        return SME_OK;
+    } catch (...) {
+        return SME_INTERNAL_ERROR;
+    }
+}
+
 const char* sme_intelligence_version(void) {
     return "1.0.0";
 }

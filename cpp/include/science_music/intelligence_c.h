@@ -61,6 +61,54 @@ int sme_generate_score(
     size_t* output_count,
     SME_TonalContext* output_tonality
 );
+/*
+ * WebAssembly-friendly packed ABI. This avoids depending on compiler-specific
+ * C struct layout when JavaScript writes directly into linear memory.
+ *
+ * option_values has SME_PACKED_OPTION_COUNT uint32 values:
+ *   seed low word, seed high word, bpm, collection (0 white / 1 black),
+ *   root (0..11, 12 = automatic), mode (0 major / 1 minor / 2 automatic),
+ *   enable bass, pad, plucked, analog, percussion (each 0 or 1).
+ *
+ * output_events is output_capacity records of SME_PACKED_EVENT_STRIDE doubles:
+ *   start beat, duration beats, MIDI pitch, velocity, pan, role,
+ *   phrase index, accent.
+ *
+ * output_tonality, when non-null, receives SME_PACKED_TONALITY_STRIDE doubles:
+ *   root pitch class, root MIDI, collection, mode, confidence,
+ *   center-was-manual, mode-was-manual.
+ *
+ * Query required event capacity with output_events=NULL and capacity=0.
+ * output_capacity is measured in events, not doubles. No memory is retained.
+ */
+enum {
+    SME_PACKED_OPTION_COUNT = 11,
+    SME_PACKED_EVENT_STRIDE = 8,
+    SME_PACKED_TONALITY_STRIDE = 7,
+    SME_PACKED_SEED_LOW = 0,
+    SME_PACKED_SEED_HIGH = 1,
+    SME_PACKED_BPM = 2,
+    SME_PACKED_COLLECTION = 3,
+    SME_PACKED_ROOT = 4,
+    SME_PACKED_MODE = 5,
+    SME_PACKED_ENABLE_BASS = 6,
+    SME_PACKED_ENABLE_PAD = 7,
+    SME_PACKED_ENABLE_PLUCKED = 8,
+    SME_PACKED_ENABLE_ANALOG = 9,
+    SME_PACKED_ENABLE_PERCUSSION = 10
+};
+
+int sme_generate_score_packed(
+    const double* source_values,
+    uint32_t source_count,
+    const uint32_t* option_values,
+    uint32_t option_count,
+    double* output_events,
+    uint32_t output_capacity,
+    uint32_t* output_count,
+    double* output_tonality
+);
+
 const char* sme_intelligence_version(void);
 
 #ifdef __cplusplus
