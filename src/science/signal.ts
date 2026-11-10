@@ -58,14 +58,15 @@ function finite(values:ArrayLike<number>,label:string):void {
 /** Pure mapping from the packed C++ signal-analysis ABI to typed browser data. */
 export function mapPackedScientificSignal(
   summaries:ArrayLike<number>,frames:ArrayLike<number>,relationships:ArrayLike<number>,
-  channels:readonly Pick<ScientificSignalChannelInput,"id"|"unit">[],
+  channels:readonly ScientificSignalChannelInput[],
   sampleCount:number,sampleRateHz:number
 ):ScientificSignalAnalysis {
   if(!Number.isInteger(sampleCount)||sampleCount<2)throw new RangeError("Signal sample count must be at least two.");
   if(!Number.isFinite(sampleRateHz)||sampleRateHz<0)throw new RangeError("Signal sample rate must be zero or finite.");
   if(channels.length<1||channels.length>32)throw new RangeError("Signal analysis requires one to 32 channels.");
-  if(new Set(channels.map(c=>c.id)).size!==channels.length||channels.some(c=>!c.id.trim()))
-    throw new TypeError("Signal channel IDs must be non-empty and unique.");
+  if(new Set(channels.map(c=>c.id)).size!==channels.length||
+     channels.some(c=>!c.id.trim()||c.samples.length!==sampleCount))
+    throw new TypeError("Signal channel IDs must be unique and sample counts must match.");
   if(summaries.length!==channels.length*SUMMARY_STRIDE||
      frames.length%FRAME_STRIDE!==0||relationships.length%RELATIONSHIP_STRIDE!==0)
     throw new TypeError("Packed signal analysis has an invalid record length.");
