@@ -88,10 +88,13 @@ describe("reference media signal analysis", () => {
         rms: 0.7, spectralCentroidHz: 700, lowBandEnergy: 0.5, midBandEnergy: 0.5,
         highBandEnergy: 0, onsetStrength: 0.8 }
     ];
-    expect(averageSpectralWindow(frames, 0, 0.5)).toMatchObject({
-      rms: 0.2, spectralCentroidHz: 200, lowBandEnergy: 0.5,
-      midBandEnergy: 0.5, highBandEnergy: 0, onsetStrength: 0.3
-    });
+    const firstHalf = averageSpectralWindow(frames, 0, 0.5);
+    expect(firstHalf.rms).toBeCloseTo(0.2, 12);
+    expect(firstHalf.spectralCentroidHz).toBeCloseTo(200, 12);
+    expect(firstHalf.lowBandEnergy).toBeCloseTo(0.5, 12);
+    expect(firstHalf.midBandEnergy).toBeCloseTo(0.5, 12);
+    expect(firstHalf.highBandEnergy).toBe(0);
+    expect(firstHalf.onsetStrength).toBeCloseTo(0.3, 12);
     expect(averageSpectralWindow(frames, 0.25, 0.75).spectralCentroidHz).toBe(400);
   });
 
