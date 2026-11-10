@@ -8,7 +8,7 @@
 - **Default branch:** `main`
 - **Live app:** https://qqd99.github.io/ScienceMusicEngine/
 - **Browser stack:** TypeScript, Vite, Vitest, browser-native Web Audio API.
-- **Native intelligence stack:** standalone C++17 library under `cpp/`, CMake/CTest, no third-party runtime dependencies, and a stable C ABI intended for a future WebAssembly adapter.
+- **Native intelligence stack:** standalone C++17 library under `cpp/`, CMake/CTest, no third-party runtime dependencies, and a stable two-pass C ABI with an opt-in packed-array WebAssembly bridge.
 - **Current product:** Mathematics Music Engine / Science Music Engine — a browser laboratory that turns mathematical structures into deterministic musical events and synthesizes them into original music.
 
 This is the active project. The earlier `qqd99/GenerativeMusic` repository was a separate Christmas-music experiment. The user explicitly chose to drop the random Christmas generator and start a new Mathematics Music Engine in this repository. **Do not resume Christmas carols, Christmas rotation, or Christmas-specific requirements here. Do not modify `GenerativeMusic` or `GiangSinhOnline` unless the user explicitly asks.**
@@ -84,6 +84,7 @@ The C++ core is not selected by the live browser app. An opt-in Emscripten adapt
 - `src/style.css` — UI styling.
 - `tests/math.test.ts` — mathematical generation, deterministic behavior, composition, and musical-form tests.
 - `tests/audio.test.ts` — instrument routing, fallbacks, conductor, and audio-event tests.
+- `tests/wasm.test.ts` — packed-score mapping, role conversion, tempo conversion, and malformed-ABI checks.
 - `index.html` — app entry document.
 - `package.json` — development scripts and dependencies.
 - `.github/workflows/deploy.yml` — GitHub Actions test/build/Pages deployment workflow.
@@ -132,10 +133,11 @@ The user requested the next Generative Music Engine milestone to prioritize **mu
 - The score has four connected movements over 16 bars: opening, development, climax and reprise/cadence.
 - The conductor analyzes each two-bar phrase and selects at most two supporting roles. Bass and pads compete with available answer space; plucked and analog lines are mutually exclusive alternatives. Decisions carry a small continuity preference from the previous phrase.
 - Pitched support notes share the resolved scale and chord frames. Percussion is a separate source-shaped rhythm role.
-- `intelligence_c.h` exposes a two-pass C ABI (query required event count, then fill caller-owned buffer), suitable for a future WebAssembly boundary.
-- The C++ module is a symbolic composition core only. It is not yet connected to the browser UI and does not render audio. Do not describe the live website as using this C++ engine until that integration is implemented and verified.
+- `intelligence_c.h` exposes the original two-pass struct C ABI and an additive packed-array C ABI for WebAssembly (11 uint32 option words, eight doubles per event, seven doubles of tonal metadata). Both use caller-owned buffers and return deterministic status codes.
+- `src/wasm/bridge.ts` is an opt-in Emscripten loader and browser-event adapter. It is not wired to the UI; it maps beat/MIDI data into the existing NoteEvent representation and owns/frees all linear-memory allocations.
+- The C++ module is a symbolic composition core only and does not render audio. The opt-in WASM adapter is available for callers, but the live UI still uses the TypeScript engine. Do not describe the live website as using the C++ engine until a deliberate UI rollout is implemented, parity-verified and auditioned.
 - Native build: `cmake -S cpp -B build/cpp`; native tests: `ctest --test-dir build/cpp --output-on-failure`; demo: `./build/cpp/science_music_demo --seed 42 --collection black --mode auto --output score.csv`.
-- GitHub Actions must run the native CMake build, CTest suite and demo smoke test alongside the existing TypeScript/Vite checks before deployment.
+- GitHub Actions must run the TypeScript tests, native CMake build/CTest/demo smoke test, Emscripten build and native-versus-WASM event parity script before deployment.
 
 ### Last verified C++ musical-intelligence core
 

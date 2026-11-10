@@ -57,7 +57,7 @@ The native core includes:
 - A connected 16-bar opening/development/climax/reprise form.
 - A phrase-aware conductor that selects at most two supporting roles and makes plucked/analog answers compete for the same melodic space.
 - Scale-aware bass, pad and melodic answer events, plus independently enabled source-shaped percussion.
-- A stable two-pass C ABI designed for future WebAssembly integration.
+- A stable two-pass struct C ABI plus a packed-array C ABI for WebAssembly, with explicit caller-owned buffers and deterministic error codes.
 
 Build and test the native module (requires CMake and a C++17 compiler):
 
@@ -73,7 +73,7 @@ Generate a deterministic symbolic score CSV:
 ./build/cpp/science_music_demo --seed 42 --collection black --mode auto --output score.csv
 ```
 
-The CSV contains beat positions, durations, MIDI pitches, velocities, panning, musical roles and phrase identifiers. It is an event score, not an audio file. An experimental WebAssembly adapter is built and parity-checked separately; the existing TypeScript/Web Audio browser app remains the live product until the adapter is explicitly integrated and auditioned.
+The CSV contains beat positions, durations, MIDI pitches, velocities, panning, musical roles and phrase identifiers. It is an event score, not an audio file. An experimental WebAssembly adapter is available as a separate opt-in build and is covered by a native-versus-WASM event parity check; the existing TypeScript/Web Audio browser app remains the live product until the adapter is explicitly integrated and auditioned.
 
 ### Experimental WebAssembly bridge
 

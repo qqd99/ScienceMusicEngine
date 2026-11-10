@@ -84,14 +84,13 @@ async function instantiateWasmModule(): Promise<ScienceMusicWasmModule> {
 
 /** Load the optional Emscripten module once; a failed load can be retried. */
 export async function loadWasmModule(): Promise<ScienceMusicWasmModule> {
-  if (!modulePromise) {
-    const pending = instantiateWasmModule();
-    modulePromise = pending;
-    void pending.catch(() => {
-      if (modulePromise === pending) modulePromise = undefined;
-    });
-  }
-  return modulePromise;
+  if (modulePromise) return modulePromise;
+  const pending = instantiateWasmModule();
+  modulePromise = pending;
+  void pending.catch(() => {
+    if (modulePromise === pending) modulePromise = undefined;
+  });
+  return pending;
 }
 
 function resolveOptions(input: WasmGenerationOptions): ResolvedOptions {

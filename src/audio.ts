@@ -138,6 +138,14 @@ export function resolveInstrumentEvents(composition: Composition, instruments: I
       .map(event => ({ ...event }));
   }
 
+  // C++/WASM scores already contain their conductor-selected symbolic parts.
+  // Preserve those events exactly instead of generating a second arrangement.
+  if (composition.label === "wasm") {
+    return composition.events
+      .map(event => ({ ...event }))
+      .sort((a, b) => a.time - b.time);
+  }
+
   const events = [...composition.events];
   const lead = composition.events.filter(event => (event.voice ?? "lead") === "lead");
   if (!lead.length) return events;
@@ -701,7 +709,7 @@ function createConductorSession(
 ): AdaptiveConductorSession {
   const resolved = resolveInstrumentEvents(composition, instruments);
   const available = hasDedicatedInstruments(instruments) ? instruments : undefined;
-  const enabled = conductorEnabled && composition.label !== "shepard";
+  const enabled = conductorEnabled && composition.label !== "shepard" && composition.label !== "wasm";
   return new AdaptiveConductorSession(resolved, composition.duration, available, enabled);
 }
 
