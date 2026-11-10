@@ -19,8 +19,7 @@ describe("reference media signal analysis", () => {
     expect(analysis.averageSpectralCentroidHz).toBeLessThan(450);
     expect(analysis.averageRms).toBeGreaterThan(0.45);
     expect(analysis.frames.every(frame =>
-      frame.lowBandEnergy + frame.midBandEnergy + frame.highBandEnergy
-        === expect.closeTo(1, 5)
+      Math.abs(frame.lowBandEnergy + frame.midBandEnergy + frame.highBandEnergy - 1) < 1e-5
     )).toBe(true);
   });
 

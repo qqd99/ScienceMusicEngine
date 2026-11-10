@@ -54,16 +54,13 @@ export function validateReferenceFile(file: File, kind: "audio" | "video"): void
   if (file.size > MAX_REFERENCE_FILE_BYTES) {
     throw new RangeError("Reference files must be 150 MB or smaller.");
   }
-  const durationLimit = kind === "video"
-    ? MAX_REFERENCE_VIDEO_SECONDS
-    : MAX_REFERENCE_AUDIO_SECONDS;
-  if (kind === "video" && file.type && !file.type.startsWith("video/")) {
+  const genericType = !file.type || file.type === "application/octet-stream";
+  if (kind === "video" && !genericType && !file.type.startsWith("video/")) {
     throw new TypeError("Choose a video file for video analysis.");
   }
-  if (kind === "audio" && file.type && !file.type.startsWith("audio/")) {
+  if (kind === "audio" && !genericType && !file.type.startsWith("audio/")) {
     throw new TypeError("Choose an audio file for audio analysis.");
   }
-  void durationLimit;
 }
 
 export async function decodeAudioFile(file: File): Promise<AudioBuffer> {
@@ -214,6 +211,24 @@ export async function extractVideoReference(
   let sourceSampleRateHz = 0;
   let sourceChannelCount = 0;
   let audioCaptureAvailable = false;
+  let disposed = false;
+  const captureWait = new AbortController();
+  const relayAbort = () => captureWait.abort();
+  signal?.addEventListener("abort", relayAbort, { once: true });
+  const cleanup = async () => {
+    if (disposed) return;
+    disposed = true;
+    stopRecording?.();
+    try { source?.disconnect(); } catch { /* already disconnected */ }
+    streamDestination?.stream.getTracks().forEach(track => track.stop());
+    await audioContext?.close().catch(() => undefined);
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+    video.remove();
+    URL.revokeObjectURL(objectUrl);
+    signal?.removeEventListener("abort", relayAbort);
+  };
   const warnings: string[] = [];
   const chunks: Blob[] = [];
   let stopRecording: (() => void) | undefined;
@@ -246,8 +261,8 @@ export async function extractVideoReference(
       if (recorder?.state === "recording") recorder.stop();
     };
 
-    const metadata = waitForMediaEvent(video, "loadedmetadata", signal, 20_000);
-    const ended = waitForMediaEvent(video, "ended", signal, MAX_REFERENCE_VIDEO_SECONDS * 1_000 + 30_000);
+    const metadata = waitForMediaEvent(video, "loadedmetadata", captureWait.signal, 20_000);
+    const ended = waitForMediaEvent(video, "ended", captureWait.signal, MAX_REFERENCE_VIDEO_SECONDS * 1_000 + 30_000);
     video.addEventListener("timeupdate", () => {
       if (video.duration > 0) {
         onProgress?.(0.05 + 0.62 * (video.currentTime / video.duration), "Capturing video audio");
@@ -256,7 +271,8 @@ export async function extractVideoReference(
     recorder.start(1_000);
     void audioContext.resume();
     const playback = video.play();
-    await Promise.all([metadata, playback]);
+    const resumed = audioContext.resume();
+    await metadata;
     durationSeconds = video.duration;
     if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
       throw new Error("The selected video has no readable duration.");
@@ -264,6 +280,7 @@ export async function extractVideoReference(
     if (durationSeconds > MAX_REFERENCE_VIDEO_SECONDS) {
       throw new RangeError("Video references must be 3 minutes or shorter for synchronized local audio capture.");
     }
+    await Promise.all([playback, resumed]);
     assertNotAborted(signal);
     await ended;
     stopRecording();
@@ -282,8 +299,16 @@ export async function extractVideoReference(
     }
   } catch (error) {
     stopRecording?.();
-    if (signal?.aborted) throw new DOMException("Reference analysis was cancelled.", "AbortError");
-    if (error instanceof RangeError) throw error;
+    captureWait.abort();
+    if (signal?.aborted) {
+      await cleanup();
+      throw new DOMException("Reference analysis was cancelled.", "AbortError");
+    }
+    if (Number.isFinite(video.duration) && video.duration > 0) durationSeconds = video.duration;
+    if (error instanceof RangeError) {
+      await cleanup();
+      throw error;
+    }
     warnings.push(
       error instanceof Error
         ? "Video audio extraction: " + error.message
@@ -302,7 +327,10 @@ export async function extractVideoReference(
       }
       visualFrames = await sampleVideoFrames(video, durationSeconds, signal, onProgress);
     } catch (error) {
-      if (signal?.aborted) throw new DOMException("Reference analysis was cancelled.", "AbortError");
+      if (signal?.aborted) {
+        await cleanup();
+        throw new DOMException("Reference analysis was cancelled.", "AbortError");
+      }
       warnings.push(error instanceof Error
         ? "Video visual analysis: " + error.message
         : "Video frame analysis was unavailable.");
@@ -310,14 +338,7 @@ export async function extractVideoReference(
   }
   onProgress?.(1, "Video analysis captured");
 
-  try { source?.disconnect(); } catch { /* already disconnected */ }
-  streamDestination?.stream.getTracks().forEach(track => track.stop());
-  await audioContext?.close().catch(() => undefined);
-  video.pause();
-  video.removeAttribute("src");
-  video.load();
-  video.remove();
-  URL.revokeObjectURL(objectUrl);
+  await cleanup();
 
   return {
     audioBuffer,
