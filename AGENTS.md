@@ -169,7 +169,7 @@ The user requested the next Generative Music Engine milestone to prioritize **mu
 
 ### Scientific signal analysis implementation
 
-- Development branch: `feat/scientific-signal-timeline`.
+- Merged into `main` through [pull request #2](https://github.com/qqd99/ScienceMusicEngine/pull/2); merge commit: `eb58e15cb974440aa86fdd90cb10a947ccb04224`.
 - New C++ API: `ScientificSignalAnalyzer` accepts synchronized multi-channel samples and returns signal summaries, windowed feature frames, and pairwise phase/correlation estimates.
 - The C++ musical-intelligence `SourceProfile` now reuses the analyzer's RMS, activity, zero-crossing, period and periodicity features.
 - The browser maps the packed C ABI into typed signal analysis and draws a window-activity envelope aligned to the audio playhead. The current math experiments are a single normalized channel with unknown physical sample rate, so no Hz is fabricated.
@@ -178,7 +178,7 @@ The user requested the next Generative Music Engine milestone to prioritize **mu
 ### Experimental WebAssembly bridge (opt-in score audition; TypeScript remains the production default)
 
 - Implementation branch `feat/wasm-bridge` was merged through pull request https://github.com/qqd99/ScienceMusicEngine/pull/1. The merged main commit is `622767213e5f3dba8b153002b1a4278f8d1d62e5`.
-- Main baseline before the scientific-signal branch: commit `bfea7b1067278d713993fb05fda403540ff89de8`; GitHub Actions run #143 completed successfully. The scientific-signal branch adds a second native CTest target and a three-phase C++/WASM parity smoke test; verify its exact pull-request run before merging.
+- GitHub Actions PR run #146 passed on the final implementation commit: all 63 TypeScript tests, both native CTest targets, the C++ CLI smoke test, Emscripten build, native/WASM score parity, three-phase 60 Hz signal-analysis smoke test, and Vite production build. Main push run #147 also passed and GitHub Pages deployment completed successfully.
 - The packed entry point is declared in intelligence_c.h as sme_generate_score_packed. Its options are a fixed 11-word uint32 array; event records are eight doubles and tonal metadata is seven doubles. This avoids JavaScript depending on wasm32 C struct padding.
 - The C++ C ABI remains caller-buffer-owned. JavaScript allocates source, options, count, tonal metadata and event buffers with _malloc, checks status codes, copies all returned values into JS-owned arrays, then releases every pointer in a finally block. The module retains no JS buffers.
 - Emscripten builds a modularized ES module and companion .wasm file into public/wasm. Generated artifacts are ignored and are created by scripts/build-wasm.sh.
