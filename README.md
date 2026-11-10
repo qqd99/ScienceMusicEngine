@@ -66,6 +66,17 @@ The analysis timeline aligns 128 windows of audio RMS/activity, spectral centroi
 - **Reference-guided composition** is optional. When enabled, the estimated tempo is used only when confidence is sufficient, and a 24% blend of normalized reference energy/onset contour influences the mathematical source sequence. Mathematics remains the primary source; the raw recording is not turned into copied notes or used as an instrument sample.
 - The dedicated Shepard illusion is not reference-guided, preserving its continuous octave-layer behavior.
 
+
+## Power-grid reference experiment (sound-first prototype)
+
+Select **Power grid · 60 Hz** in the Mathematics Lab for a dedicated **67-second** mathematical reconstruction of the user-provided power-grid video. This is a separate experiment: the generic 16-bar composition, C++ score audition, pentatonic/diatonic keys, reference-contour blend, adaptive conductor, piano, and other conventional instrument parts do **not** reshape its sound. Output volume and WAV export still use the shared live/offline Web Audio path.
+
+The original video displays ten stages and equations, reproduced as pure functions in `src/grid.ts`: `u(t)=sin(2π·60t)`; three equally spaced 120° phases; `P(t)=Σp_i`; clipped transformer flux `tanh(g sin ωt)/tanh g`; vibrating wire modes `y_n=A sin(nπx/L) cos(2πf_nt)`, `f_n=n√(T/μ)/(2L)`; arc square wave `sgn(sin ωt)`; frequency swing `Δf=−f₀ΔPt/(2H)`; load-shedding imbalance `f=f₀+(Pgen−Pload)/D`; cascade `N_(g+1)=kN_g`; and a frequency/voltage collapse toward silence.
+
+The shared `src/grid-audio.ts` synthesizer follows the physical frequency curve and uses the reference's prominent spectral partials around **60, 120, 240, and 480 Hz** plus strictly procedural clipping, arcing, pulses, and fault noise. `tests/grid.test.ts` checks the formulas, deterministic event routing and live/export event-list parity. No reference video or audio is committed to the repository, and no imported recording is used as a synthesizer sample.
+
+**Accuracy boundary:** The equations and 67-second narrative stages come from the actual video, but their tension, inertia, load levels, exact scene boundaries, timbre envelopes, mix, and sound effects are inferred/approximated rather than recovered from a project source file. This is an equation-faithful reconstruction, **not** a waveform-identical transcription. Listen and compare against the reference recording before claiming a perceptual match. If it still differs, prioritize sound comparison and calibration, not more general arrangement features.
+
 ## C++ Musical Intelligence Core (v1.0)
 
 The repository now also contains a standalone **C++17 composition-intelligence library** in `cpp/`. It accepts normalized mathematical source values and produces a deterministic symbolic score; it does not synthesize waveforms or replace the existing browser engine yet.
