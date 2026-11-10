@@ -28,6 +28,9 @@ function waitForMediaEvent(
   signal?: AbortSignal,
   timeoutMs = 15_000
 ): Promise<void> {
+  if (eventName === "loadedmetadata" && media.readyState >= HTMLMediaElement.HAVE_METADATA) return Promise.resolve();
+  if (eventName === "loadeddata" && media.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) return Promise.resolve();
+  if (eventName === "ended" && media.ended) return Promise.resolve();
   return new Promise((resolve, reject) => {
     let timeout = 0;
     const cleanup = () => {

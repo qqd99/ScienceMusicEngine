@@ -547,6 +547,7 @@ $("#reference-file").addEventListener("change", () => {
   referenceAbort?.abort();
   referenceAbort = null;
   if (referenceObjectUrl) URL.revokeObjectURL(referenceObjectUrl);
+  referenceObjectUrl = null;
   referenceFile = file;
   referenceKind = inferReferenceKind(file);
   resetReferenceAnalysis();
@@ -763,6 +764,7 @@ $("#toggle-arrangement").addEventListener("click", () => {
 ["bpm","complexity","root","scale","tonal-mode"].forEach(id=>$(`#${id}`).addEventListener("input",()=>{
   if(id==="bpm")$("#bpm-value").textContent=( $("#bpm") as HTMLInputElement).value+" BPM";
   if(id==="complexity")$("#complexity-value").textContent=( $("#complexity") as HTMLInputElement).value+"%";
+  updateReferenceGuideControls();
   render();updateLiveComposition();
 }));
 $("#master-volume").addEventListener("input", () => {
