@@ -190,7 +190,9 @@ const ROLE_WAVEFORMS: Record<Voice, OscillatorType> = {
   pad: "sine",
   answer: "triangle",
   texture: "sawtooth",
-  percussion: "square"
+  percussion: "square",
+  // Reserved for the dedicated TypeScript physical-signal renderer; never emitted by C++.
+  grid: "sine"
 };
 
 const DRUM_KINDS: Record<number, NonNullable<NoteEvent["percussionKind"]>> = {
