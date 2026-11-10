@@ -125,7 +125,7 @@ SignalRelationship relate(const std::vector<double>& x,const std::vector<double>
     if(std::abs(pa-pb)>std::max(2.0,period*0.05))return out;
     const int radius=std::max(1,static_cast<int>(std::lround(period*0.5)));
     double best=-1.0;int bestLag=0;
-    const int lagStep=std::max(1,static_cast<int>(std::lround(period/180.0)));
+    const int lagStep=std::max(1,static_cast<int>(std::lround(period/360.0)));
     for(int lag=-radius;lag<=radius;lag+=lagStep) {
         const double c=correlation(dx,dy,lag);
         if(c>best){best=c;bestLag=lag;}

@@ -26,7 +26,7 @@ describe("scientific signal ABI mapping", () => {
   it("rejects invalid frame ranges and malformed channel-pair relationships", () => {
     const summary = [0, -1, 1, 0.7, 0.5, 0, 0.2, 0.1, 0, 0, 0];
     expect(() => mapPackedScientificSignal(
-      summary, [0, 0, 4, 0, 0.5, 0, 0, 0, 0, 0], [],
+      summary, [0, 0, 5, 0, 0.5, 0, 0, 0, 0, 0], [],
       [{ id: "a", samples: [0, 1, 0, -1] }], 4, 0
     )).toThrow(/timeline range/);
     expect(() => mapPackedScientificSignal(
