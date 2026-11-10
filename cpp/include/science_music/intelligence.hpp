@@ -44,6 +44,11 @@ struct SourceProfile {
     double movement = 0.0;
     double centroid = 0.5;
     double energy = 0.0;
+    double rms = 0.0;
+    double activity = 0.0;
+    double zero_crossing_rate = 0.0;
+    std::uint32_t dominant_period_samples = 0;
+    double periodicity_strength = 0.0;
 };
 
 struct Motif { std::array<int, 4> degrees{{0, 2, 4, 2}}; };
