@@ -1,3 +1,4 @@
+import { scheduleGridEvent } from "./grid-audio";
 import { COMPOSITION_BARS, type Composition, type HarmonicFrame, type NoteEvent } from "./math";
 export type SoundProfile = "hybrid-cinematic" | "natural" | "electronic";
 export type InstrumentLevels = Record<keyof InstrumentSettings, number>;
@@ -130,6 +131,8 @@ function chooseChordToneResponse(
 }
 
 export function resolveInstrumentEvents(composition: Composition, instruments: InstrumentSettings): NoteEvent[] {
+  // The physics-reference score is already fully orchestrated: no tonal notes or conductor.
+  if (composition.label === "grid") return composition.events.map(event => ({ ...event }));
   // Shepard layers are already a complete, carefully balanced sound event.
   // Do not turn them into an ordinary ensemble or add sequence-derived bass/pads.
   if (composition.label === "shepard") {
@@ -709,7 +712,7 @@ function createConductorSession(
 ): AdaptiveConductorSession {
   const resolved = resolveInstrumentEvents(composition, instruments);
   const available = hasDedicatedInstruments(instruments) ? instruments : undefined;
-  const enabled = conductorEnabled && composition.label !== "shepard" && composition.label !== "wasm";
+  const enabled = conductorEnabled && composition.label !== "shepard" && composition.label !== "wasm" && composition.label !== "grid";
   return new AdaptiveConductorSession(resolved, composition.duration, available, enabled);
 }
 
@@ -927,7 +930,7 @@ export class MusicPlayer {
     }
     const resolved = resolveInstrumentEvents(composition, this.instruments);
     const available = hasDedicatedInstruments(this.instruments) ? this.instruments : undefined;
-    const enabled = this.conductorEnabled && composition.label !== "shepard" && composition.label !== "wasm";
+    const enabled = this.conductorEnabled && composition.label !== "shepard" && composition.label !== "wasm" && composition.label !== "grid";
     this.conductorSession = new AdaptiveConductorSession(
       resolved, composition.duration, available, enabled
     );
@@ -960,6 +963,11 @@ export class MusicPlayer {
   private playNote(event: NoteEvent, at: number): void {
     const ctx = this.context, master = this.master;
     if (!ctx || !master || this.active.size >= 64) return;
+    if (event.voice === "grid") {
+      const source = scheduleGridEvent(ctx, event, at, master, ended => this.active.delete(ended));
+      this.active.add(source);
+      return;
+    }
     if (event.voice === "percussion") {
       let drum!: AudioScheduledSourceNode;
       drum = schedulePercussion(ctx, event, at, master, () => this.active.delete(drum));
@@ -1050,7 +1058,7 @@ export class MusicPlayer {
     this.master.gain.setTargetAtTime(Math.max(0, Math.min(1.5, volume)), now, 0.025);
   }
   getCurrentConductorDecision(): ConductorPhraseDecision | null {
-    if (!this.composition || this.composition.label === "shepard") return null;
+    if (!this.composition || this.composition.label === "shepard" || this.composition.label === "grid") return null;
     const phraseIndex = Math.min(COMPOSITION_BARS / 2 - 1, Math.floor(this.getProgress() * (COMPOSITION_BARS / 2)));
     return this.conductorSession?.getDecision(phraseIndex) ?? null;
   }
@@ -1109,6 +1117,10 @@ export async function renderCompositionWav(composition: Composition, volume = 1.
     const end = Math.min(composition.duration + tailSeconds, at + Math.max(0.04, event.duration));
     const duration = end - at;
     if (duration <= 0) continue;
+    if (event.voice === "grid") {
+      scheduleGridEvent(offline, event, at, master);
+      continue;
+    }
     if (event.voice === "percussion") {
       schedulePercussion(offline, event, at, master);
       continue;
