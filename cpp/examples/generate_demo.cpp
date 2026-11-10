@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -27,6 +28,7 @@ void write_csv(
 ) {
     std::ofstream output(path);
     if (!output) throw std::runtime_error("Cannot open score output: " + path);
+    output << std::setprecision(17);
     output << "start_beat,duration_beats,midi_pitch,velocity,pan,role,phrase_index,accent\n";
     for (const auto& event : score.events) {
         output << event.start_beat << ','

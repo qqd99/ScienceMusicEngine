@@ -73,7 +73,21 @@ Generate a deterministic symbolic score CSV:
 ./build/cpp/science_music_demo --seed 42 --collection black --mode auto --output score.csv
 ```
 
-The CSV contains beat positions, durations, MIDI pitches, velocities, panning, musical roles and phrase identifiers. It is an event score, not an audio file. The existing TypeScript/Web Audio browser app remains the live product until a future WebAssembly adapter is implemented and parity-tested.
+The CSV contains beat positions, durations, MIDI pitches, velocities, panning, musical roles and phrase identifiers. It is an event score, not an audio file. An experimental WebAssembly adapter is built and parity-checked separately; the existing TypeScript/Web Audio browser app remains the live product until the adapter is explicitly integrated and auditioned.
+
+### Experimental WebAssembly bridge
+
+The C ABI also exposes a packed-array entry point so JavaScript can pass source values and generation options without relying on compiler-specific C struct offsets. The TypeScript adapter in src/wasm/bridge.ts loads the Emscripten module on demand and maps symbolic MIDI events into the browser engine's existing NoteEvent representation (beats to seconds, MIDI to frequency, and C++ roles to browser voices).
+
+This bridge is deliberately opt-in. It does not change the live UI or replace generateComposition(); the existing TypeScript/Web Audio engine remains the default until the native/WASM event parity checks pass and the C++ score has been auditioned through the existing synthesizer.
+
+Requirements: Node.js 20+, CMake, a C++17 compiler, and Emscripten 3.1.74.
+
+    npm run build:wasm
+    npm run test:wasm
+    npm run build
+
+The build creates public/wasm/science_music_wasm.js and public/wasm/science_music_wasm.wasm (both ignored build artifacts). The parity script compares every symbolic event from the native C++ CLI with the WebAssembly output for the same deterministic source, seed, tempo, collection, and options. This verifies event-level cross-target parity, not perceived sound quality or audio-rendering parity.
 
 ## Sound design
 

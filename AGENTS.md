@@ -72,11 +72,13 @@ The browser UI includes mathematical visualization, a moving playhead, tempo, co
 
 - `src/math.ts` — current browser-side pure mathematical generators and deterministic composition generation. Main entry point: `generateComposition()`.
 - `cpp/include/science_music/intelligence.hpp` and `cpp/src/intelligence.cpp` — standalone C++17 musical-intelligence API and implementation: tonal inference, motif development, harmony, phrase analysis, and conductor decisions.
-- `cpp/include/science_music/intelligence_c.h` and `cpp/src/c_api.cpp` — stable C ABI for native callers and a future WebAssembly boundary.
+- `cpp/include/science_music/intelligence_c.h` and `cpp/src/c_api.cpp` — two-pass struct C ABI plus a packed-array C ABI for WebAssembly; both preserve caller-owned output buffers and deterministic error codes.
+- `src/wasm/bridge.ts` — opt-in Emscripten loader, safe linear-memory ownership, and MIDI/beat-to-browser-event conversion.
+- `scripts/build-wasm.sh` and `scripts/test-wasm.mjs` — Emscripten build and native-versus-WASM event parity check.
 - `cpp/examples/generate_demo.cpp` — deterministic logistic-source CLI example that writes a symbolic score CSV.
 - `cpp/tests/intelligence_test.cpp` and `cpp/CMakeLists.txt` — native tests and CMake build.
 
-The C++ core is not yet wired into the browser app. Keep the existing TypeScript/Web Audio path operational until a future WebAssembly adapter has parity tests and is explicitly integrated.
+The C++ core is not selected by the live browser app. An opt-in Emscripten adapter now exists in src/wasm/bridge.ts; keep the existing TypeScript/Web Audio path operational until cross-target parity passes and the user has auditioned the C++ score. Do not wire it into the live UI or claim the live product uses C++ before that rollout is explicitly approved.
 - `src/audio.ts` — Web Audio synthesis, instrument settings and event resolution, ensemble conductor, live player, and OfflineAudioContext WAV renderer. Key functions include `resolveInstrumentEvents()`, `preparePlaybackEvents()`, `applyEnsembleConductor()`, `getConductorSection()`, `MusicPlayer`, and `renderCompositionWav()`.
 - `src/main.ts` — browser UI, controls, live updates, visualization/playhead, and WAV export.
 - `src/style.css` — UI styling.
@@ -148,7 +150,16 @@ The user requested the next Generative Music Engine milestone to prioritize **mu
 - Example source: logistic map, seed 42, black-key family, automatic mode. Example chord path: `0-1-4-1-3-1-4-0`.
 - The native core is symbolic only and does not render audio. The deployed browser application still uses its existing TypeScript/Web Audio implementation; the C++ module is not yet connected to the live UI.
 
-**Next action:** implement and parity-test a WebAssembly adapter only when ready to connect the C++ score to the browser. Keep the existing TypeScript engine operational until the adapter is verified. Once native behavior is stable, the next architectural step is a WebAssembly adapter with event-level parity tests; preserve the TypeScript browser path until the adapter is actually integrated. Tests cannot prove that the resulting music sounds good; eventually audition the C++ score through the existing synthesizer.
+**Current next action:** run the Emscripten build and native-versus-WASM event parity check on this branch, then ask the user to audition C++-generated scores through the existing synthesizer. Do not switch the live UI to the C++ engine until the parity checks pass and the user approves the listening-based rollout.
+
+### Experimental WebAssembly bridge (not active in the live UI)
+
+- The packed entry point is declared in intelligence_c.h as sme_generate_score_packed. Its options are a fixed 11-word uint32 array; event records are eight doubles and tonal metadata is seven doubles. This avoids JavaScript depending on wasm32 C struct padding.
+- The C++ C ABI remains caller-buffer-owned. JavaScript allocates source, options, count, tonal metadata and event buffers with _malloc, checks status codes, copies all returned values into JS-owned arrays, then releases every pointer in a finally block. The module retains no JS buffers.
+- Emscripten builds a modularized ES module and companion .wasm file into public/wasm. Generated artifacts are ignored and are created by scripts/build-wasm.sh.
+- scripts/test-wasm.mjs compares all eight event fields against the native CLI output for the same deterministic 128-value logistic source and options. Floating-point fields use a tight cross-compiler tolerance; integer fields must match exactly.
+- src/wasm/bridge.ts converts C++ beat positions/durations to seconds, MIDI pitch to frequency, and C++ roles to the existing browser voices. It is an adapter only; it does not replace generateComposition(), the live player, or WAV rendering.
+- Event parity does not establish audible quality. The next product decision requires listening to the C++ score through the existing synthesizer and preserving the current TypeScript fallback until the user approves a rollout.
 
 The user approved a hybrid tonal-center system and shared musical intelligence for white-key and black-key improvisation.
 

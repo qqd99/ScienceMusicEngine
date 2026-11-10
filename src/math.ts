@@ -10,6 +10,8 @@ export interface NoteEvent {
   pan: number;
   voice?: "lead" | "answer" | "texture" | "bass" | "pad" | "percussion";
   percussionKind?: "kick" | "snare" | "hat";
+  phraseIndex?: number;
+  accent?: boolean;
 }
 export interface HarmonicFrame {
   start: number;
