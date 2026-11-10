@@ -28,6 +28,7 @@ function waitForMediaEvent(
   signal?: AbortSignal,
   timeoutMs = 15_000
 ): Promise<void> {
+  if (signal?.aborted) return Promise.reject(new DOMException("Reference analysis was cancelled.", "AbortError"));
   if (eventName === "loadedmetadata" && media.readyState >= HTMLMediaElement.HAVE_METADATA) return Promise.resolve();
   if (eventName === "loadeddata" && media.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) return Promise.resolve();
   if (eventName === "ended" && media.ended) return Promise.resolve();
@@ -188,11 +189,8 @@ export async function extractVideoReference(
   onProgress?: (progress: number, message: string) => void
 ): Promise<ExtractedVideoReference> {
   validateReferenceFile(file, "video");
-  if (typeof MediaRecorder === "undefined") {
-    throw new Error("This browser does not support local video-audio capture. Try an audio file instead.");
-  }
   const Context = window.AudioContext;
-  if (!Context) throw new Error("This browser does not support the Web Audio API.");
+  const canCaptureAudio = typeof MediaRecorder !== "undefined" && Boolean(Context);
 
   const video = document.createElement("video");
   const objectUrl = URL.createObjectURL(file);
@@ -245,8 +243,19 @@ export async function extractVideoReference(
 
   try {
     assertNotAborted(signal);
-    audioContext = new Context();
-    source = audioContext.createMediaElementSource(video);
+    if (!canCaptureAudio || !Context) {
+      await waitForMediaEvent(video, "loadedmetadata", signal, 20_000);
+      durationSeconds = video.duration;
+      if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+        throw new Error("The selected video has no readable duration.");
+      }
+      if (durationSeconds > MAX_REFERENCE_VIDEO_SECONDS) {
+        throw new RangeError("Video references must be 3 minutes or shorter for synchronized local analysis.");
+      }
+      warnings.push("This browser cannot capture the video's audio track; only visual motion will be analyzed.");
+    } else {
+      audioContext = new Context();
+      source = audioContext.createMediaElementSource(video);
     streamDestination = audioContext.createMediaStreamDestination();
     const silentOutput = audioContext.createGain();
     silentOutput.gain.value = 0;
@@ -280,7 +289,9 @@ export async function extractVideoReference(
     });
     recorder.start(1_000);
     const playback = video.play();
+    void playback.catch(() => undefined);
     const resumed = audioContext.resume();
+    void resumed.catch(() => undefined);
     await metadata;
     durationSeconds = video.duration;
     if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
@@ -308,6 +319,7 @@ export async function extractVideoReference(
       }
     } else {
       warnings.push("The browser did not return an audio stream for this video.");
+    }
     }
   } catch (error) {
     stopRecording?.();
