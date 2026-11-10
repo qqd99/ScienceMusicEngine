@@ -1,4 +1,5 @@
-export type Mode = "mandelbrot" | "euclidean" | "chaos" | "shepard";
+import { generateGridComposition } from "./grid";
+export type Mode = "mandelbrot" | "euclidean" | "chaos" | "shepard" | "grid";
 export const COMPOSITION_BARS = 16;
 export interface NoteEvent {
   time: number;
@@ -8,7 +9,10 @@ export interface NoteEvent {
   velocityEnd?: number;
   waveform: OscillatorType;
   pan: number;
-  voice?: "lead" | "answer" | "texture" | "bass" | "pad" | "percussion";
+  voice?: "lead" | "answer" | "texture" | "bass" | "pad" | "percussion" | "grid";
+  gridKind?: "fundamental" | "harmonic" | "phase" | "load" | "transformer" | "line" | "arc" | "fault-noise" | "alarm" | "load-shed" | "cascade" | "blackout";
+  gridPhase?: number;
+  gridDrive?: number;
   percussionKind?: "kick" | "snare" | "hat";
   phraseIndex?: number;
   accent?: boolean;
@@ -366,6 +370,7 @@ export function generateComposition(mode: Mode, options: {
   /** Reference contribution is deliberately capped so mathematics remains the primary source. */
   referenceInfluence?: number;
 } = {}): Composition {
+  if (mode === "grid") return generateGridComposition();
   const bpm = clamp(options.bpm ?? 128, 45, 180);
   const complexity = clamp(options.complexity ?? 0.55, 0.1, 1);
   const seed = options.seed ?? 0.314159;
