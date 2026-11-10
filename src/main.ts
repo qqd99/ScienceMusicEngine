@@ -69,13 +69,14 @@ app.innerHTML = `
           <video id="reference-video" class="reference-player" controls playsinline hidden></video>
           <div id="reference-progress" class="reference-progress" hidden><div><span id="reference-progress-fill"></span></div><small id="reference-progress-label">Preparing reference…</small></div>
           <canvas id="reference-viz" width="900" height="170" aria-label="Synchronized audio energy, spectral centroid and video motion timeline"></canvas>
-          <div class="reference-legend"><span><i class="reference-legend-rms"></i> AUDIO ENERGY</span><span><i class="reference-legend-spectrum"></i> SPECTRAL CENTROID</span><span><i class="reference-legend-motion"></i> VIDEO MOTION</span></div>
+          <div class="reference-legend"><span><i class="reference-legend-rms"></i> AUDIO WAVEFORM</span><span><i class="reference-legend-spectrum"></i> SPECTRAL CENTROID</span><span><i class="reference-legend-bands"></i> FREQUENCY BANDS</span><span><i class="reference-legend-motion"></i> VIDEO MOTION</span></div>
           <div class="reference-metrics">
             <div><span>DURATION</span><strong id="reference-duration">—</strong></div>
             <div><span>ESTIMATED TEMPO</span><strong id="reference-tempo">—</strong></div>
             <div><span>SPECTRAL CENTROID</span><strong id="reference-centroid">—</strong></div>
             <div><span>VISUAL MOTION</span><strong id="reference-motion">—</strong></div>
           </div>
+          <p class="reference-band-readout">BAND ENERGY <strong id="reference-bands">LOW — · MID — · HIGH —</strong></p>
           <button id="toggle-reference-guide" class="feature-toggle reference-guide-toggle" type="button" aria-pressed="false" disabled><span class="toggle-indicator"></span><span><b>REFERENCE-GUIDED COMPOSITION</b><small>Blend measured energy and onset contour into the mathematical source</small></span><strong>OFF</strong></button>
           <p class="reference-guide-note" id="reference-guide-note">Import a reference to analyze its audio and optionally guide the composition. The mathematical source remains primary.</p>
           <p class="reference-message" id="reference-message">Audio is decoded locally. Video audio is captured in real time; visual frames are sampled on the same timeline.</p>
@@ -273,22 +274,38 @@ function drawReferenceTimeline() {
     return;
   }
   const frames = referenceAnalysis.frames;
-  const maxRms = Math.max(1e-6, ...frames.map(frame => frame.rms));
+  const maxWave = Math.max(1e-6, ...frames.flatMap(frame => [
+    Math.abs(frame.waveformMinimum), Math.abs(frame.waveformMaximum)
+  ]));
   const maxCentroid = Math.max(1, ...frames.map(frame => frame.spectralCentroidHz));
   const maxMotion = Math.max(1e-6, ...frames.map(frame => frame.visualMotion));
   const slotWidth = width / frames.length;
   frames.forEach((frame, index) => {
     const x = index * slotWidth;
-    const energy = Math.max(0, Math.min(1, frame.rms / maxRms));
-    const barHeight = energy * 62;
     if (referenceAnalysis.audioDetected) {
-      referenceContext.fillStyle = "rgba(131,197,178," + (0.22 + energy * 0.68) + ")";
-      referenceContext.fillRect(x + 1, height - 12 - barHeight, Math.max(1, slotWidth - 2), barHeight);
+      const center = height * 0.52;
+      const top = center - (frame.waveformMaximum / maxWave) * 46;
+      const bottom = center - (frame.waveformMinimum / maxWave) * 46;
+      referenceContext.strokeStyle = "rgba(131,197,178," + (0.3 + Math.min(0.65, frame.rms * 1.2)) + ")";
+      referenceContext.lineWidth = Math.max(1, slotWidth - 1);
+      referenceContext.beginPath();
+      referenceContext.moveTo(x + slotWidth / 2, top);
+      referenceContext.lineTo(x + slotWidth / 2, bottom);
+      referenceContext.stroke();
+      const lowWidth = Math.max(0, frame.lowBandEnergy) * Math.max(1, slotWidth - 1);
+      const midWidth = Math.max(0, frame.midBandEnergy) * Math.max(1, slotWidth - 1);
+      const highWidth = Math.max(0, frame.highBandEnergy) * Math.max(1, slotWidth - 1);
+      referenceContext.fillStyle = "rgba(131,197,178,.8)";
+      referenceContext.fillRect(x, height - 7, lowWidth, 3);
+      referenceContext.fillStyle = "rgba(183,162,223,.8)";
+      referenceContext.fillRect(x + lowWidth, height - 7, midWidth, 3);
+      referenceContext.fillStyle = "rgba(244,213,138,.8)";
+      referenceContext.fillRect(x + lowWidth + midWidth, height - 7, highWidth, 3);
     }
     if (referenceAnalysis.visualFrameCount > 0) {
       const motion = Math.max(0, Math.min(1, frame.visualMotion / maxMotion));
       referenceContext.fillStyle = "rgba(244,213,138," + (0.18 + motion * 0.72) + ")";
-      referenceContext.fillRect(x + 1, height - 8, Math.max(1, slotWidth - 2), 3 + motion * 8);
+      referenceContext.fillRect(x + 1, height - 19, Math.max(1, slotWidth - 2), 3 + motion * 8);
     }
   });
   if (referenceAnalysis.audioDetected) {
@@ -336,6 +353,14 @@ function updateReferenceMetrics(analysis: ReferenceMediaAnalysis) {
   $("#reference-centroid").textContent = analysis.averageSpectralCentroidHz > 0
     ? Math.round(analysis.averageSpectralCentroidHz) + " Hz"
     : "—";
+  const bandMean = (key: "lowBandEnergy" | "midBandEnergy" | "highBandEnergy") =>
+    analysis.frames.reduce((sum, frame) => sum + frame[key], 0) /
+    Math.max(1, analysis.frames.length);
+  $("#reference-bands").textContent = analysis.audioDetected
+    ? "LOW " + Math.round(bandMean("lowBandEnergy") * 100) + "% · MID " +
+      Math.round(bandMean("midBandEnergy") * 100) + "% · HIGH " +
+      Math.round(bandMean("highBandEnergy") * 100) + "%"
+    : "NO AUDIO";
   const motion = analysis.frames.reduce((sum, frame) => sum + frame.visualMotion, 0) /
     Math.max(1, analysis.frames.length);
   $("#reference-motion").textContent = analysis.visualFrameCount > 0
@@ -361,6 +386,7 @@ function resetReferenceAnalysis() {
   $("#reference-tempo").textContent = "—";
   $("#reference-centroid").textContent = "—";
   $("#reference-motion").textContent = "—";
+  $("#reference-bands").textContent = "LOW — · MID — · HIGH —";
   updateReferenceGuideControls();
 }
 function setReferenceProgress(progress: number, message: string) {

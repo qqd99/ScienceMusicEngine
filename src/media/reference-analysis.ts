@@ -19,6 +19,8 @@ export interface ReferenceTimelineFrame {
   startFraction: number;
   endFraction: number;
   rms: number;
+  waveformMinimum: number;
+  waveformMaximum: number;
   activity: number;
   spectralCentroidHz: number;
   lowBandEnergy: number;
@@ -309,6 +311,8 @@ export function createVisualOnlyReferenceAnalysis(metadata: {
         startFraction,
         endFraction,
         rms: 0,
+        waveformMinimum: 0,
+        waveformMaximum: 0,
         activity: 0,
         spectralCentroidHz: 0,
         lowBandEnergy: 0,
@@ -376,6 +380,14 @@ export async function analyzeReferenceSamples(
     const average = (key: keyof SpectralFrame) => mean(
       spectralSlice.map(frame => Number(frame[key]))
     );
+    const sampleStart = Math.floor(index * samples.length / windows);
+    const sampleEnd = Math.max(sampleStart + 1, Math.floor((index + 1) * samples.length / windows));
+    let waveformMinimum = 1;
+    let waveformMaximum = -1;
+    for (let sample = sampleStart; sample < Math.min(samples.length, sampleEnd); sample += 1) {
+      waveformMinimum = Math.min(waveformMinimum, samples[sample]);
+      waveformMaximum = Math.max(waveformMaximum, samples[sample]);
+    }
     timeline.push({
       index,
       startSeconds: startFraction * metadata.durationSeconds,
@@ -383,6 +395,8 @@ export async function analyzeReferenceSamples(
       startFraction,
       endFraction,
       rms: signalFrame?.rms ?? average("rms"),
+      waveformMinimum,
+      waveformMaximum,
       activity: signalFrame?.activity ?? average("onsetStrength"),
       spectralCentroidHz: average("spectralCentroidHz"),
       lowBandEnergy: average("lowBandEnergy"),

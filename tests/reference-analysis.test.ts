@@ -51,6 +51,8 @@ describe("reference media signal analysis", () => {
       startFraction: index / 128,
       endFraction: (index + 1) / 128,
       rms: index / 127,
+      waveformMinimum: -index / 127,
+      waveformMaximum: index / 127,
       activity: index % 2,
       spectralCentroidHz: 400,
       lowBandEnergy: 0.5,
