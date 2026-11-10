@@ -927,7 +927,7 @@ export class MusicPlayer {
     }
     const resolved = resolveInstrumentEvents(composition, this.instruments);
     const available = hasDedicatedInstruments(this.instruments) ? this.instruments : undefined;
-    const enabled = this.conductorEnabled && composition.label !== "shepard";
+    const enabled = this.conductorEnabled && composition.label !== "shepard" && composition.label !== "wasm";
     this.conductorSession = new AdaptiveConductorSession(
       resolved, composition.duration, available, enabled
     );

@@ -81,8 +81,10 @@ The C ABI also exposes a packed-array entry point so JavaScript can pass source 
 
 This bridge is deliberately opt-in. It does not change the live UI or replace generateComposition(); the existing TypeScript/Web Audio engine remains the default until the native/WASM event parity checks pass and the C++ score has been auditioned through the existing synthesizer.
 
-Requirements: Node.js 20+, CMake, a C++17 compiler, and Emscripten 3.1.74.
+Requirements: Node.js 20+, CMake, a C++17 compiler, and Emscripten 3.1.74. Build the native reference executable first, then compile and test the WASM target:
 
+    cmake -S cpp -B build/cpp -DCMAKE_BUILD_TYPE=Release
+    cmake --build build/cpp --parallel
     npm run build:wasm
     npm run test:wasm
     npm run build
