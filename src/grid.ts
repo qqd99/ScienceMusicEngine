@@ -100,40 +100,46 @@ export function generateGridComposition(): Composition {
     time, duration, frequency, velocity, waveform: "sine", pan, voice: "grid", gridKind, ...extra
   });
   // Reference spectral peaks: electrical fundamental and 2nd, 4th, 8th harmonics.
-  add(0, 66.98, 60, 0.050, "fundamental");
-  add(0, 66.98, 120, 0.021, "harmonic", -0.14);
-  add(0, 66.98, 240, 0.015, "harmonic", 0.14);
-  add(0, 66.98, 480, 0.012, "harmonic", 0.08);
+  add(0, 66.98, 60, 0.022, "fundamental");
+  add(0, 66.98, 120, 0.011, "harmonic", -0.14);
+  add(0, 66.98, 240, 0.011, "harmonic", 0.14);
+  add(0, 66.98, 480, 0.016, "harmonic", 0.08);
+  // Additional deterministic harmonics fill the reference's upper-frequency energy.
+  for (const [ratio, level] of [[6,0.0065],[7,0.0065],[9,0.0055],[10,0.0055],[12,0.0075],
+    [14,0.0045],[16,0.007],[20,0.005],[24,0.0045],[30,0.003],[32,0.0035],
+    [40,0.0035],[48,0.0024],[60,0.0018]] as const) {
+    add(0, 66.98, 60 * ratio, level, "harmonic", Math.sin(ratio) * 0.3);
+  }
 
   for (let k = 0; k < 3; k++) {
     add(5, 7, 60, 0.018, "phase", (k - 1) * 0.65, { gridPhase: -TAU * k / 3 });
   }
   for (let t = 12; t < 21; t += 1.25) {
     const load = gridPowerLoad(t + 0.05);
-    add(t, 0.96, 60 * (1 + load * 1.4), 0.027 + load * 0.01, "load", (load - 0.85) * 0.5);
+    add(t, 0.96, 60 * (1 + load * 1.4), 0.018 + load * 0.007, "load", (load - 0.85) * 0.5);
     add(t + 0.55, 0.3, 60 * (2 + load), 0.012, "load", -0.27);
   }
   for (let t = 21; t < 25; t++) {
-    add(t, 0.99, gridFrequencyAt(t), 0.048, "transformer", 0, { gridDrive: 1.8 + (t - 21) * 0.85 });
+    add(t, 0.99, gridFrequencyAt(t), 0.025, "transformer", 0, { gridDrive: 1.8 + (t - 21) * 0.85 });
   }
   // f_n = n/(2L) sqrt(T/μ). Here L=1 and T/μ=14400, so f1=60 Hz.
   for (let n = 1; n <= 4; n++) {
-    add(25, 8, gridLineFrequency(n, 1, 14400, 1), 0.035 / Math.sqrt(n), "line", n % 2 ? -0.4 : 0.4);
+    add(25, 8, gridLineFrequency(n, 1, 14400, 1), 0.018 / Math.sqrt(n), "line", n % 2 ? -0.4 : 0.4);
   }
   for (let j = 0; j < 32; j++) {
     const time = 33 + j * 7 / 32;
     const irregularity = ((j * 37) % 11) / 11;
     add(time, 0.085 + irregularity * 0.10, gridFrequencyAt(time),
-      0.023 + irregularity * 0.017, "arc", (j % 2 ? -1 : 1) * 0.56);
+      0.015 + irregularity * 0.013, "arc", (j % 2 ? -1 : 1) * 0.56);
     if (j % 2 === 0) add(time, 0.10, 900 + (j % 5) * 220, 0.015, "fault-noise", (j % 3 - 1) * 0.5);
   }
   for (let j = 0; j < 18; j++) {
     const time = 40 + j * 7 / 18;
-    add(time, 0.24, 4 * gridFrequencyAt(time), 0.033, "alarm", j % 2 ? -0.24 : 0.24);
+    add(time, 0.24, 4 * gridFrequencyAt(time), 0.024, "alarm", j % 2 ? -0.24 : 0.24);
   }
   for (let j = 0; j < 6; j++) {
     const time = 47 + j;
-    add(time, 0.48, 2 * gridFrequencyAt(time), 0.028 * (1 - j / 14), "load-shed", (j % 2 - 0.5) * 0.6);
+    add(time, 0.48, 2 * gridFrequencyAt(time), 0.020 * (1 - j / 14), "load-shed", (j % 2 - 0.5) * 0.6);
     add(time + 0.5, 0.18, 4 * gridFrequencyAt(time), 0.012, "load-shed", 0.3);
   }
   // N(g+1)=2N(g): one, two, four, eight, sixteen, thirty-two faults.
@@ -144,10 +150,10 @@ export function generateGridComposition(): Composition {
       const time = 53 + generation * width + j * width / count;
       if (time >= 63) break;
       add(time, Math.min(0.21, width / count * 0.9), gridFrequencyAt(time) * (2 + generation * 0.5),
-        0.035 / Math.sqrt(count), "cascade", j % 2 ? -0.67 : 0.67);
+        0.024 / Math.sqrt(count), "cascade", j % 2 ? -0.67 : 0.67);
     }
   }
-  add(63, 3.98, gridFrequencyAt(63), 0.025, "blackout");
+  add(63, 3.98, gridFrequencyAt(63), 0.015, "blackout");
   events.sort((a, b) => a.time - b.time);
   return {
     events,
