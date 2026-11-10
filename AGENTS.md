@@ -162,7 +162,7 @@ The user requested the next Generative Music Engine milestone to prioritize **mu
 - The smoke-test score demonstrated conductor variation: the climax reduced to bass-only in one phrase while opening/development/reprise phrases selected different supporting combinations. Plucked and analog answers are mutually exclusive within a phrase.
 - Follow-up deterministic-variation correction: the seed now selects a subtle scale-degree ornament during motif development; a focused test confirms that changing only the seed changes the score while repeating the same seed remains identical.
 - Example source: logistic map, seed 42, black-key family, automatic mode. Example chord path: `0-1-4-1-3-1-4-0`.
-- The native core is symbolic only and does not render audio. The deployed browser application still uses its existing TypeScript/Web Audio implementation; the C++ module is not yet connected to the live UI.
+- The C++ score generator is symbolic only and does not render audio. Its score path is available through the opt-in A/B selector; the C++ scientific-signal analyzer is also used by the live browser overlay. TypeScript remains the production music generator.
 
 **Current next action:** ask the user to inspect the new signal-analysis panel and listen to the existing mathematical experiments. Confirm that the activity envelope and playhead feel synchronized and that the displayed period metrics are meaningful. Keep the TypeScript music engine as the production default. Do not add a physical-science experiment or infer scientific model parameters until the user supplies/approves the source equations, units and assumptions.
 
