@@ -268,3 +268,8 @@ The current `README.md` describes the product and features, but its long feature
 ---
 
 **Guiding principle:** make the mathematics generate the musical ideas, make the instruments express those ideas, and make the ensemble tell a coherent musical story. Every change should be deterministic, independently controllable, audibly meaningful, testable, and approved by listening—not merely plausible in code.
+
+
+### 2026-11-11 reference-focused power-grid prototype (unmerged PR)
+
+The user supplied the 67-second video “How the power grid goes down, and what it sounds like” and asked to match its functions and sound instead of generic reference energy guidance. The dedicated `grid` experiment in `src/grid.ts` and `src/grid-audio.ts` reproduces the video’s displayed mathematical equations and 60/120/240/480 Hz partial priorities. Its event score routes around the normal 16-bar piano/conductor system in both live playback and WAV export; other modes remain unchanged. The mathematical models and their timing/physical parameter assumptions are documented in README. It does not bundle reference media or claim sample-identical audio. After CI passes, the user should audition the output beside their video and report section-by-section differences; make subsequent sound changes based on that feedback. The reference video's 60 Hz premise must be interpreted as physical AC frequency, not a BPM/tempered-pitch conversion.

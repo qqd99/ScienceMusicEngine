@@ -4,6 +4,7 @@ import type { ScientificSignalAnalysis } from "./science/signal";
 import { analyzeReferenceSamples, buildReferenceGuide, createVisualOnlyReferenceAnalysis, type ReferenceMediaAnalysis } from "./media/reference-analysis";
 import { decodeAudioFile, extractVideoReference, prepareMonoReferenceAudio, validateReferenceFile } from "./media/reference-media";
 import { DEFAULT_INSTRUMENTS, DEFAULT_INSTRUMENT_LEVELS, DEFAULT_SOUND_PROFILE, MusicPlayer, renderCompositionWav, getConductorSection, type InstrumentSettings, type InstrumentLevels, type SoundProfile } from "./audio";
+import { gridStageAt, GRID_DURATION_SECONDS } from "./grid";
 import "./style.css";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -35,13 +36,14 @@ const instrumentSettings: InstrumentSettings = { ...DEFAULT_INSTRUMENTS };
 const instrumentLevels: InstrumentLevels = { ...DEFAULT_INSTRUMENT_LEVELS };
 let soundProfile: SoundProfile = DEFAULT_SOUND_PROFILE;
 const names: Record<Mode, string> = {
-  mandelbrot: "Mandelbrot explorer", euclidean: "Euclidean rhythms", chaos: "Chaos theory", shepard: "Shepard illusion"
+  mandelbrot: "Mandelbrot explorer", euclidean: "Euclidean rhythms", chaos: "Chaos theory", shepard: "Shepard illusion", grid: "Grid collapse · 60 Hz"
 };
 const descriptions: Record<Mode, string> = {
   mandelbrot: "Trace the boundary of a fractal. Escape time becomes pitch, density and melodic contour.",
   euclidean: "Distribute a number of pulses as evenly as possible across a repeating cycle.",
   chaos: "A logistic map turns deterministic nonlinear dynamics into an evolving melodic sequence.",
-  shepard: "Layered sine tones crossfade across octaves to create the illusion of endless ascent."
+  shepard: "Layered sine tones crossfade across octaves to create the illusion of endless ascent.",
+  grid: "67 seconds of the reference video, driven by its actual 60 Hz, three-phase, load, saturation, line, arc, swing, shedding, cascade and blackout equations."
 };
 app.innerHTML = `
   <main class="shell">
@@ -53,8 +55,9 @@ app.innerHTML = `
         <button class="mode" data-mode="euclidean"><span class="mode-index">02</span><span><b>Euclidean</b><small>Rhythm mathematics</small></span><i>↗</i></button>
         <button class="mode" data-mode="chaos"><span class="mode-index">03</span><span><b>Chaos map</b><small>Nonlinear dynamics</small></span><i>↗</i></button>
         <button class="mode" data-mode="shepard"><span class="mode-index">04</span><span><b>Shepard tone</b><small>Auditory illusion</small></span><i>↗</i></button>
+        <button class="mode" data-mode="grid"><span class="mode-index">05</span><span><b>Power grid · 60 Hz</b><small>Reference equations · 67s</small></span><i>↗</i></button>
       </nav><div class="sidebar-note"><span class="note-symbol">ⓘ</span><p>Generated entirely in your browser with the Web Audio API. No audio files are downloaded.</p></div></aside>
-      <section class="workbench"><div class="workbench-head"><div><div class="section-label">02 / EXPERIMENT</div><h2 id="mode-title">Mandelbrot explorer</h2><p id="mode-description">${descriptions.mandelbrot}</p></div><span class="tag">PURE ALGORITHM</span></div>
+      <section class="workbench"><div class="workbench-head"><div><div class="section-label">02 / EXPERIMENT</div><h2 id="mode-title">Mandelbrot explorer</h2><p id="mode-description">${descriptions.mandelbrot}</p><p id="grid-formula" class="instrument-note" hidden></p></div><span class="tag">PURE ALGORITHM</span></div>
         <div class="visual-panel"><div class="visual-top"><span>SEQUENCE FIELD</span><span id="visual-meta">128 STEPS · 16 BARS · 30s</span></div><canvas id="viz" width="900" height="280" aria-label="Visualization of the generated mathematical sequence"></canvas><div class="visual-legend"><span><i class="legend-line"></i> MATHEMATICAL OUTPUT</span><span id="value-readout">AWAITING GENERATION</span></div></div>
         <div class="signal-analysis-panel"><div class="visual-top"><span>SCIENTIFIC SIGNAL ANALYSIS</span><span id="signal-engine">C++17 / WASM</span></div><div class="signal-metrics"><div><span>MEAN</span><strong id="signal-mean">—</strong></div><div><span>RMS</span><strong id="signal-rms">—</strong></div><div><span>ACTIVITY</span><strong id="signal-activity">—</strong></div><div><span>PERIOD</span><strong id="signal-period">—</strong></div></div><div class="signal-timeline-label"><span>WINDOW ACTIVITY ENVELOPE</span><span id="signal-window-count">16 WINDOWS</span></div><p class="signal-note" id="signal-note">Analyzing the mathematical source with the shared C++ scientific-signal core. Physical Hz is shown only when a sample clock is supplied.</p></div>
         <section class="reference-panel" aria-labelledby="reference-title">
@@ -97,7 +100,7 @@ const $ = <T extends HTMLElement>(selector: string) => app.querySelector<T>(sele
 const canvas = $("#viz") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
 function effectiveBpm(): number {
-  const referenceTempo = referenceGuideEnabled && mode !== "shepard"
+  const referenceTempo = referenceGuideEnabled && mode !== "shepard" && mode !== "grid"
     ? referenceAnalysis?.estimatedTempoBpm
     : null;
   const reliableTempo = referenceAnalysis && referenceAnalysis.tempoConfidence >= 0.2;
@@ -106,7 +109,7 @@ function effectiveBpm(): number {
     : Number(($("#bpm") as HTMLInputElement).value);
 }
 function activeReferenceGuide(): number[] | undefined {
-  if (!referenceGuideEnabled || mode === "shepard" || !referenceAnalysis?.audioDetected) return undefined;
+  if (!referenceGuideEnabled || mode === "shepard" || mode === "grid" || !referenceAnalysis?.audioDetected) return undefined;
   return buildReferenceGuide(referenceAnalysis.frames);
 }
 function options() {
@@ -145,7 +148,7 @@ function updatePlayButtonState() {
 }
 function updateEngineSummary(composition?: Composition) {
   const engine = selectedEngine();
-  const label = engine === "wasm" ? "C++ / WASM CANDIDATE" : "TYPESCRIPT BASELINE";
+  const label = mode === "grid" ? "REFERENCE EQUATIONS · PURE WEB AUDIO" : engine === "wasm" ? "C++ / WASM CANDIDATE" : "TYPESCRIPT BASELINE";
   const bpm = effectiveBpm();
   const seed = Math.round(currentSeed * 1_000_000);
   const tonal = composition?.tonality
@@ -153,23 +156,34 @@ function updateEngineSummary(composition?: Composition) {
     : "";
   const eventCount = composition ? " · " + composition.events.length + " SCORE EVENTS" : "";
   const guideLabel = referenceGuideEnabled && mode !== "shepard" ? " · REFERENCE GUIDE" : "";
-  $("#engine-summary").textContent = label + " · " + bpm + " BPM · SEED " + seed + tonal + eventCount + guideLabel;
+  $("#engine-summary").textContent = mode === "grid"
+    ? label + " · 60 Hz FUNDAMENTAL · 67s · " + (composition?.events.length ?? "—") + " CONTROL EVENTS"
+    : label + " · " + bpm + " BPM · SEED " + seed + tonal + eventCount + guideLabel;
 }
 function updateEngineControls() {
   const select = $("#engine-select") as HTMLSelectElement;
   const wasmOption = select.querySelector<HTMLOptionElement>('option[value="wasm"]')!;
-  wasmOption.disabled = mode === "shepard";
-  if (mode === "shepard" && select.value === "wasm") select.value = "typescript";
+  wasmOption.disabled = mode === "shepard" || mode === "grid";
+  if ((mode === "shepard" || mode === "grid") && select.value === "wasm") select.value = "typescript";
 
   const wasmSelected = selectedEngine() === "wasm";
   for (const id of ["toggle-arrangement", "toggle-expression", "toggle-conductor"]) {
     const control = $<HTMLButtonElement>("#" + id);
-    control.disabled = wasmSelected;
+    control.disabled = wasmSelected || mode === "grid";
     control.title = wasmSelected
       ? "The C++ engine uses its own built-in arrangement, 16-bar form and phrase conductor."
       : "";
   }
-  $("#engine-note").textContent = wasmSelected
+  const isGrid = mode === "grid";
+  for (const id of ["bpm", "complexity", "root", "scale", "tonal-mode", "sound-profile", "random-seed"]) {
+    ($<HTMLInputElement>("#" + id)).disabled = isGrid;
+  }
+  for (const id of ["toggle-rich", "instrument-piano", "instrument-analog", "instrument-plucked", "instrument-cinematicBass", "instrument-atmosphere", "level-piano", "level-analog", "level-plucked", "level-cinematicBass", "level-atmosphere"]) {
+    ($<HTMLButtonElement>("#" + id)).disabled = isGrid;
+  }
+  $("#engine-note").textContent = isGrid
+    ? "Exact reference equations, 60 Hz oscillator and measured harmonic priorities. Generic piano, drums, conductor, tonal controls and tempo are bypassed; output volume and WAV export still work."
+    : wasmSelected
     ? "C++ uses its own arrangement and phrase conductor. The three TypeScript-only structure toggles are paused during this audition."
     : mode === "shepard"
       ? "The Shepard illusion is a dedicated TypeScript experiment and is not part of the C++ score engine."
@@ -199,8 +213,8 @@ async function generateAuditionComposition(
   sourceComposition: Composition
 ): Promise<Composition> {
   if (engine === "typescript") return sourceComposition;
-  if (mode === "shepard") {
-    throw new Error("The C++ engine does not implement the dedicated Shepard illusion.");
+  if (mode === "shepard" || mode === "grid") {
+    throw new Error("The C++ score engine does not implement dedicated Shepard or power-grid reference modes.");
   }
   const composition = await generateWasmComposition(
     sourceComposition.values,
@@ -224,7 +238,7 @@ function updateReferenceGuideControls() {
   const button = $("#toggle-reference-guide") as HTMLButtonElement;
   const available = Boolean(referenceAnalysis?.audioDetected);
   const pausedForShepard = mode === "shepard" && referenceGuideEnabled;
-  button.disabled = !available || mode === "shepard";
+  button.disabled = !available || mode === "shepard" || mode === "grid";
   button.classList.toggle("enabled", referenceGuideEnabled);
   button.setAttribute("aria-pressed", String(referenceGuideEnabled));
   button.querySelector("strong")!.textContent = pausedForShepard
@@ -236,8 +250,8 @@ function updateReferenceGuideControls() {
     ? "Import a reference to analyze its audio and optionally guide the composition. The mathematical source remains primary."
     : !available
       ? "No usable audio track was detected. Video motion remains available, but audio cannot guide music generation."
-      : mode === "shepard"
-        ? "The Shepard illusion keeps its dedicated continuous-octave behavior; reference guidance is paused in this experiment."
+      : mode === "shepard" || mode === "grid"
+        ? "The dedicated experiment already follows its own equations; a generic 24% contour blend is paused here."
         : referenceGuideEnabled
           ? "ACTIVE · 24% reference energy/onset contour blend · " +
             (reliableTempo ? "tempo follows the " + tempo + " BPM reference estimate." : "no confident tempo estimate; your tempo control remains active.")
@@ -476,7 +490,11 @@ function render() {
   const values = comp.values;
   visualValues = values;
   requestScientificSignalAnalysis(values);
-  if (mode === "shepard") {
+  if (mode === "grid") {
+    $("#tonality-readout").textContent = "60 HZ AC · PHYSICS SYNTHESIS · NO TEMPERED SCALE";
+    const stage = gridStageAt(player.isPlaying ? player.getProgress() * GRID_DURATION_SECONDS : 0);
+    $("#grid-formula").textContent = stage.id.toUpperCase().replaceAll("-", " ") + " · " + stage.equation;
+  } else if (mode === "shepard") {
     $("#tonality-readout").textContent = "SHEPARD · CONTINUOUS CHROMATIC OCTAVE LAYERS";
   } else if (comp.tonality) {
     const noteNames = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"];
@@ -498,7 +516,10 @@ function render() {
     values.forEach((v,i)=>{if(i%4===0){const x=i/(values.length-1)*w,y=h-30-v*(h-65);ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);ctx.fillStyle="#b7a2df";ctx.fill();}});
   }
   drawSignalActivityTrack();
-  $("#visual-meta").textContent = `${values.length} STEPS · 16 BARS · ${Math.round(comp.duration)}s`;
+  ($("#grid-formula") as HTMLElement).hidden = mode !== "grid";
+  $("#visual-meta").textContent = mode === "grid"
+    ? `${values.length} STAGE SAMPLES · ${GRID_DURATION_SECONDS}s · 60Hz PHYSICAL OSCILLATORS`
+    : `${values.length} STEPS · 16 BARS · ${Math.round(comp.duration)}s`;
   $("#value-readout").textContent = `MIN ${Math.min(...values).toFixed(3)}  /  MAX ${Math.max(...values).toFixed(3)}`;
   if (player.isPlaying) drawPlayhead(player.getProgress());
 }
@@ -529,9 +550,13 @@ function animatePlayhead() {
   if (!player.isPlaying) { cancelAnimationFrame(animationFrame); animationFrame=0; return; }
   render();
   const engine = selectedEngine();
-  $("#conductor-phase").textContent = getConductorSection(player.getProgress()).toUpperCase();
+  $("#conductor-phase").textContent = mode === "grid"
+    ? gridStageAt(player.getProgress() * GRID_DURATION_SECONDS).id.toUpperCase().replaceAll("-", " ")
+    : getConductorSection(player.getProgress()).toUpperCase();
   const decision = player.getCurrentConductorDecision();
-  $("#conductor-detail").textContent = engine === "wasm"
+  $("#conductor-detail").textContent = mode === "grid"
+    ? gridStageAt(player.getProgress() * GRID_DURATION_SECONDS).equation
+    : engine === "wasm"
     ? "C++ phrase plan · native arrangement and conductor"
     : ensembleConductorEnabled
       ? (decision?.summary ?? "Analyzing the next phrase…")
@@ -738,7 +763,7 @@ $("#clear-reference").addEventListener("click", () => {
   updateLiveComposition();
 });
 $("#toggle-reference-guide").addEventListener("click", () => {
-  if (!referenceAnalysis?.audioDetected || mode === "shepard") return;
+  if (!referenceAnalysis?.audioDetected || mode === "shepard" || mode === "grid") return;
   referenceGuideEnabled = !referenceGuideEnabled;
   updateReferenceGuideControls();
   render();
