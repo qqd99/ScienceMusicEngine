@@ -60,7 +60,7 @@ The analysis timeline aligns 128 windows of audio RMS/activity, spectral centroi
 
 - Audio references: maximum 10 minutes and 150 MB.
 - Video references: maximum 3 minutes and 150 MB, because browser audio capture must run in real time.
-- Audio is downmixed to mono and resampled to a bounded analysis clock for the shared signal ABI. The original file remains local and is available in the preview player.
+- Audio is downmixed to mono and resampled to a 12 kHz browser FFT clock (up to 7.2 million samples for the 10-minute limit). A separate box-filtered copy is decimated to at most 900,000 samples for the bounded C++/WASM ABI, with its sample rate adjusted to preserve physical-frequency interpretation. The original file remains local and is available in the preview player.
 - Video frame motion is an image-difference measurement from small local frame samples, not object recognition or semantic scene understanding.
 - Tempo is an estimate, not guaranteed ground truth. Silent, ambiguous or rhythmically irregular recordings may have no confident BPM.
 - **Reference-guided composition** is optional. When enabled, the estimated tempo is used only when confidence is sufficient, and a 24% blend of normalized reference energy/onset contour influences the mathematical source sequence. Mathematics remains the primary source; the raw recording is not turned into copied notes or used as an instrument sample.
