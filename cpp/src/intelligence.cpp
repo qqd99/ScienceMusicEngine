@@ -1,4 +1,5 @@
 #include "science_music/intelligence.hpp"
+#include "science_music/scientific_signal.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -102,6 +103,19 @@ SourceProfile analyze_range(
         result.mean * 0.45 + result.movement * 1.2 +
         std::abs(result.trend) * 0.3
     );
+    if (segment.size() >= 2) {
+        ScientificSignal signal;
+        signal.channels.push_back(segment);
+        SignalAnalysisOptions signal_options;
+        signal_options.frame_count = 1;
+        const auto analysis = ScientificSignalAnalyzer{}.analyze(signal, signal_options);
+        const auto& summary = analysis.channels.front();
+        result.rms = summary.rms;
+        result.activity = summary.mean_absolute_delta;
+        result.zero_crossing_rate = summary.zero_crossing_rate;
+        result.dominant_period_samples = summary.dominant_period_samples;
+        result.periodicity_strength = summary.periodicity_strength;
+    }
     return result;
 }
 
