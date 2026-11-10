@@ -45,7 +45,7 @@ const descriptions: Record<Mode, string> = {
 };
 app.innerHTML = `
   <main class="shell">
-    <header class="topbar"><a class="brand" href="#"><span class="brand-mark">∿</span><span>SCIENCE<span class="muted">MUSIC</span><small>ENGINE / 001</small></span></a><div class="top-meta"><span class="live-dot"></span> BROWSER AUDIO LAB <span class="divider">/</span> NO AI · NO SAMPLES</div></header>
+    <header class="topbar"><a class="brand" href="#"><span class="brand-mark">∿</span><span>SCIENCE<span class="muted">MUSIC</span><small>ENGINE / 001</small></span></a><div class="top-meta"><span class="live-dot"></span> BROWSER AUDIO LAB <span class="divider">/</span> NO AI MUSIC · LOCAL ANALYSIS</div></header>
     <section class="hero"><div class="eyebrow">MATHEMATICS → SOUND <span>FIELD NOTES 001</span></div><h1>Hear the shape<br/>of <em>mathematics.</em></h1><p class="hero-copy">An instrument for turning mathematical structures into original sound. Every note has a reason. Every pattern has a source.</p></section>
     <section class="lab-grid">
       <aside class="sidebar"><div class="section-label">01 / SELECT A SYSTEM</div><nav class="mode-list">
@@ -345,8 +345,9 @@ function updateReferenceMetrics(analysis: ReferenceMediaAnalysis) {
   const warnings = analysis.warnings.length ? " " + analysis.warnings.join(" ") : "";
   $("#reference-message").textContent =
     (analysis.audioDetected
-      ? "C++ / WASM signal summary · " + analysis.analysisSampleRateHz.toFixed(0) +
-        " Hz analysis clock · " + analysis.sourceChannelCount + " source channel(s) downmixed to mono for timeline analysis."
+      ? (analysis.signal ? "C++ / WASM signal summary · " : "Browser spectral analysis · ") +
+        analysis.analysisSampleRateHz.toFixed(0) + " Hz analysis clock · " +
+        analysis.sourceChannelCount + " source channel(s) downmixed to mono for timeline analysis."
       : "Visual-only reference analysis · no audio-derived metrics or tempo were inferred.") + warnings;
 }
 function resetReferenceAnalysis() {
@@ -548,6 +549,16 @@ $("#reference-file").addEventListener("change", () => {
   referenceAbort = null;
   if (referenceObjectUrl) URL.revokeObjectURL(referenceObjectUrl);
   referenceObjectUrl = null;
+  const previousAudio = $("#reference-audio") as HTMLAudioElement;
+  const previousVideo = $("#reference-video") as HTMLVideoElement;
+  previousAudio.pause();
+  previousVideo.pause();
+  previousAudio.removeAttribute("src");
+  previousVideo.removeAttribute("src");
+  previousAudio.load();
+  previousVideo.load();
+  previousAudio.hidden = true;
+  previousVideo.hidden = true;
   referenceFile = file;
   referenceKind = inferReferenceKind(file);
   resetReferenceAnalysis();
@@ -583,6 +594,8 @@ $("#reference-file").addEventListener("change", () => {
   ($("#analyze-reference") as HTMLButtonElement).disabled = false;
   ($("#clear-reference") as HTMLButtonElement).disabled = false;
   drawReferenceTimeline();
+  render();
+  updateLiveComposition();
 });
 $("#analyze-reference").addEventListener("click", async () => {
   const file = referenceFile;
