@@ -282,6 +282,53 @@ function visualAt(
   return visualFrames[index]?.[property] ?? 0;
 }
 
+/** Keep a usable synchronized visual timeline when a video has no extractable audio track. */
+export function createVisualOnlyReferenceAnalysis(metadata: {
+  fileName: string;
+  durationSeconds: number;
+  visualFrames: readonly ReferenceVisualSample[];
+  warnings?: readonly string[];
+}): ReferenceMediaAnalysis {
+  const windows = REFERENCE_TIMELINE_WINDOWS;
+  return {
+    fileName: metadata.fileName,
+    kind: "video",
+    durationSeconds: metadata.durationSeconds,
+    sourceSampleRateHz: 0,
+    analysisSampleRateHz: 0,
+    sourceChannelCount: 0,
+    signal: null,
+    frames: Array.from({ length: windows }, (_, index) => {
+      const startFraction = index / windows;
+      const endFraction = (index + 1) / windows;
+      const fraction = (startFraction + endFraction) * 0.5;
+      return {
+        index,
+        startSeconds: startFraction * metadata.durationSeconds,
+        endSeconds: endFraction * metadata.durationSeconds,
+        startFraction,
+        endFraction,
+        rms: 0,
+        activity: 0,
+        spectralCentroidHz: 0,
+        lowBandEnergy: 0,
+        midBandEnergy: 0,
+        highBandEnergy: 0,
+        onsetStrength: 0,
+        visualBrightness: visualAt(metadata.visualFrames, fraction, "brightness"),
+        visualMotion: visualAt(metadata.visualFrames, fraction, "motion")
+      };
+    }),
+    estimatedTempoBpm: null,
+    tempoConfidence: 0,
+    averageSpectralCentroidHz: 0,
+    averageRms: 0,
+    audioDetected: false,
+    visualFrameCount: metadata.visualFrames.length,
+    warnings: [...(metadata.warnings ?? []), "No audible video track was available; only visual motion was analyzed."]
+  };
+}
+
 export async function analyzeReferenceSamples(
   samples: Float32Array,
   sampleRateHz: number,
