@@ -883,7 +883,13 @@ CompositionPlan IntelligenceEngine::generate(
 
         for (int i = 0; i < counts[static_cast<std::size_t>(phrase)]; ++i) {
             const int slot = slots[static_cast<std::size_t>(phrase)][static_cast<std::size_t>(i)];
-            const int shift = i % 2 == 1 ? direction : (i == 2 ? ornament : 0);
+            // A seed-controlled scale-degree ornament adds repeatable variation
+            // without abandoning the source-derived motif or selected note set.
+            const int seed_ornament = static_cast<int>(
+                (options.seed + static_cast<std::uint64_t>(phrase)) % 3ULL
+            ) - 1;
+            const int shift = (i % 2 == 1 ? direction : (i == 2 ? ornament : 0)) +
+                (i == 2 ? seed_ornament : 0);
             push_lead(
                 plan.events, plan.tonality, bar, slot,
                 degrees[static_cast<std::size_t>(phrase)][static_cast<std::size_t>(i)] + shift,

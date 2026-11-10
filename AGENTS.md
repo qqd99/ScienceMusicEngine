@@ -125,7 +125,7 @@ The user requested the next Generative Music Engine milestone to prioritize **mu
 - `IntelligenceEngine::generate()` accepts normalized mathematical source values and deterministic generation options, and returns a symbolic `CompositionPlan`. It does not synthesize audio.
 - Tonal inference supports white-key diatonic major/minor and black-key major/minor pentatonic collections, automatic root/mode selection, independent manual root/mode overrides, and confidence/provenance metadata.
 - Source analysis measures section mean, trend, movement, centroid and energy.
-- A four-note source-derived motif is developed through inversion, retrograde and sequence.
+- A four-note source-derived motif is developed through inversion, retrograde and sequence. A seed-controlled scale-degree ornament adds repeatable variation even when the mathematical source contour is unchanged.
 - Eight two-bar chord frames are selected from source-shaped harmonic palettes and aligned against the actual lead phrase. The progression begins and ends on tonic.
 - The score has four connected movements over 16 bars: opening, development, climax and reprise/cadence.
 - The conductor analyzes each two-bar phrase and selects at most two supporting roles. Bass and pads compete with available answer space; plucked and analog lines are mutually exclusive alternatives. Decisions carry a small continuity preference from the previous phrase.
@@ -144,6 +144,7 @@ The user requested the next Generative Music Engine milestone to prioritize **mu
 - CMake include-path correction: `1e3e7b098240e4aea50599f3d0e26b4b522818f8`.
 - GitHub Actions run **#134** completed successfully: all **55 existing TypeScript tests** passed, the Vite production build passed, the C++17 library and CLI compiled, all **8 native test groups** passed under CTest, the CLI smoke test generated **164 symbolic events** across 16 bars, and GitHub Pages deployment succeeded.
 - The smoke-test score demonstrated conductor variation: the climax reduced to bass-only in one phrase while opening/development/reprise phrases selected different supporting combinations. Plucked and analog answers are mutually exclusive within a phrase.
+- Follow-up deterministic-variation correction: the seed now selects a subtle scale-degree ornament during motif development; a focused test confirms that changing only the seed changes the score while repeating the same seed remains identical.
 - Example source: logistic map, seed 42, black-key family, automatic mode. Example chord path: `0-1-4-1-3-1-4-0`.
 - The native core is symbolic only and does not render audio. The deployed browser application still uses its existing TypeScript/Web Audio implementation; the C++ module is not yet connected to the live UI.
 

@@ -62,6 +62,20 @@ void test_determinism_and_source_sensitivity() {
     const auto other_seed = engine.generate(logistic_source(options.seed), options);
     require(!same_events(a.events, other_seed.events), "different seeds must change the generated score");
 
+    const auto shared_source = logistic_source(777);
+    science_music::GenerationOptions variation_a;
+    science_music::GenerationOptions variation_b;
+    variation_a.seed = 42;
+    variation_b.seed = 43;
+    const auto same_source_a = engine.generate(shared_source, variation_a);
+    const auto same_source_b = engine.generate(shared_source, variation_b);
+    require(!same_events(same_source_a.events, same_source_b.events),
+        "seed-controlled ornaments must vary the score even when the source contour is unchanged");
+    require(same_events(
+        same_source_a.events,
+        engine.generate(shared_source, variation_a).events
+    ), "seed-controlled ornaments must remain deterministic");
+
     auto reversed = source;
     std::reverse(reversed.begin(), reversed.end());
     options.seed = 314159;
