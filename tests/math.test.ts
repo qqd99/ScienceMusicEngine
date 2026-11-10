@@ -340,6 +340,38 @@ describe("mathematical generators", () => {
     const b = generateComposition("chaos", { seed: 0.42, musicalExpression: true });
     expect(a.events).toEqual(b.events);
   });
+  it("blends a reference energy contour without removing the mathematical source", () => {
+    const guide = Array.from({ length: 128 }, (_, index) =>
+      index < 64 ? 0.12 : 0.92
+    );
+    const base = generateComposition("chaos", { seed: 0.314159 });
+    const guided = generateComposition("chaos", {
+      seed: 0.314159, referenceGuide: guide, referenceInfluence: 0.3
+    });
+    const repeated = generateComposition("chaos", {
+      seed: 0.314159, referenceGuide: guide, referenceInfluence: 0.3
+    });
+    expect(guided.values).not.toEqual(base.values);
+    expect(guided.values).toEqual(repeated.values);
+    expect(guided.values.every(value => value >= 0 && value <= 1)).toBe(true);
+    expect(base.values).toEqual(generateComposition("chaos", { seed: 0.314159 }).values);
+  });
+  it("caps reference influence and preserves the dedicated Shepard illusion", () => {
+    const guide = Array.from({ length: 128 }, (_, index) => index / 127);
+    const capped = generateComposition("chaos", {
+      seed: 0.271828, referenceGuide: guide, referenceInfluence: 4
+    });
+    const maximum = generateComposition("chaos", {
+      seed: 0.271828, referenceGuide: guide, referenceInfluence: 0.5
+    });
+    expect(capped.values).toEqual(maximum.values);
+    const ordinary = generateComposition("shepard", { seed: 0.271828 });
+    const guided = generateComposition("shepard", {
+      seed: 0.271828, referenceGuide: guide, referenceInfluence: 0.5
+    });
+    expect(guided.values).toEqual(ordinary.values);
+    expect(guided.events).toEqual(ordinary.events);
+  });
   it("creates bounded, repeatable compositions", () => {
     const a = generateComposition("chaos", { seed: 0.25 });
     const b = generateComposition("chaos", { seed: 0.25 });

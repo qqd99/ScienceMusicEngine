@@ -1,6 +1,8 @@
 import { generateComposition, type Composition, type Mode, type NoteCollection, type TonalModeChoice } from "./math";
 import { analyzeScientificSignal, generateWasmComposition, type WasmGenerationOptions } from "./wasm/bridge";
 import type { ScientificSignalAnalysis } from "./science/signal";
+import { analyzeReferenceSamples, buildReferenceGuide, createVisualOnlyReferenceAnalysis, type ReferenceMediaAnalysis } from "./media/reference-analysis";
+import { decodeAudioFile, extractVideoReference, prepareMonoReferenceAudio, validateReferenceFile } from "./media/reference-media";
 import { DEFAULT_INSTRUMENTS, DEFAULT_INSTRUMENT_LEVELS, DEFAULT_SOUND_PROFILE, MusicPlayer, renderCompositionWav, getConductorSection, type InstrumentSettings, type InstrumentLevels, type SoundProfile } from "./audio";
 import "./style.css";
 
@@ -17,6 +19,13 @@ let auditionLoading = false;
 let scientificSignalAnalysis: ScientificSignalAnalysis | undefined;
 let signalAnalysisSignature = "";
 let signalAnalysisRequest = 0;
+let referenceAnalysis: ReferenceMediaAnalysis | null = null;
+let referenceFile: File | null = null;
+let referenceKind: "audio" | "video" | null = null;
+let referenceObjectUrl: string | null = null;
+let referenceAbort: AbortController | null = null;
+let referenceGuideEnabled = false;
+let referenceTimelineFrame = 0;
 let richInstrumentsEnabled = true;
 let musicalArrangementEnabled = true;
 let musicalExpressionEnabled = true;
@@ -36,7 +45,7 @@ const descriptions: Record<Mode, string> = {
 };
 app.innerHTML = `
   <main class="shell">
-    <header class="topbar"><a class="brand" href="#"><span class="brand-mark">∿</span><span>SCIENCE<span class="muted">MUSIC</span><small>ENGINE / 001</small></span></a><div class="top-meta"><span class="live-dot"></span> BROWSER AUDIO LAB <span class="divider">/</span> NO AI · NO SAMPLES</div></header>
+    <header class="topbar"><a class="brand" href="#"><span class="brand-mark">∿</span><span>SCIENCE<span class="muted">MUSIC</span><small>ENGINE / 001</small></span></a><div class="top-meta"><span class="live-dot"></span> BROWSER AUDIO LAB <span class="divider">/</span> NO AI MUSIC · LOCAL ANALYSIS</div></header>
     <section class="hero"><div class="eyebrow">MATHEMATICS → SOUND <span>FIELD NOTES 001</span></div><h1>Hear the shape<br/>of <em>mathematics.</em></h1><p class="hero-copy">An instrument for turning mathematical structures into original sound. Every note has a reason. Every pattern has a source.</p></section>
     <section class="lab-grid">
       <aside class="sidebar"><div class="section-label">01 / SELECT A SYSTEM</div><nav class="mode-list">
@@ -48,6 +57,30 @@ app.innerHTML = `
       <section class="workbench"><div class="workbench-head"><div><div class="section-label">02 / EXPERIMENT</div><h2 id="mode-title">Mandelbrot explorer</h2><p id="mode-description">${descriptions.mandelbrot}</p></div><span class="tag">PURE ALGORITHM</span></div>
         <div class="visual-panel"><div class="visual-top"><span>SEQUENCE FIELD</span><span id="visual-meta">128 STEPS · 16 BARS · 30s</span></div><canvas id="viz" width="900" height="280" aria-label="Visualization of the generated mathematical sequence"></canvas><div class="visual-legend"><span><i class="legend-line"></i> MATHEMATICAL OUTPUT</span><span id="value-readout">AWAITING GENERATION</span></div></div>
         <div class="signal-analysis-panel"><div class="visual-top"><span>SCIENTIFIC SIGNAL ANALYSIS</span><span id="signal-engine">C++17 / WASM</span></div><div class="signal-metrics"><div><span>MEAN</span><strong id="signal-mean">—</strong></div><div><span>RMS</span><strong id="signal-rms">—</strong></div><div><span>ACTIVITY</span><strong id="signal-activity">—</strong></div><div><span>PERIOD</span><strong id="signal-period">—</strong></div></div><div class="signal-timeline-label"><span>WINDOW ACTIVITY ENVELOPE</span><span id="signal-window-count">16 WINDOWS</span></div><p class="signal-note" id="signal-note">Analyzing the mathematical source with the shared C++ scientific-signal core. Physical Hz is shown only when a sample clock is supplied.</p></div>
+        <section class="reference-panel" aria-labelledby="reference-title">
+          <div class="visual-top"><span id="reference-title">REFERENCE MEDIA ANALYSIS</span><span id="reference-status">NO REFERENCE</span></div>
+          <div class="reference-import-row">
+            <label class="reference-file-picker"><span>CHOOSE AUDIO / VIDEO</span><input id="reference-file" type="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.ogg,.flac,.mp4,.mov,.webm,.m4v"/></label>
+            <button id="analyze-reference" class="export-button" disabled>ANALYZE REFERENCE</button>
+            <button id="clear-reference" class="text-button" disabled>CLEAR</button>
+          </div>
+          <p class="reference-privacy">LOCAL ONLY · FILES STAY IN THIS BROWSER · AUDIO UP TO 10 MIN · VIDEO UP TO 3 MIN</p>
+          <audio id="reference-audio" class="reference-player" controls hidden></audio>
+          <video id="reference-video" class="reference-player" controls playsinline hidden></video>
+          <div id="reference-progress" class="reference-progress" hidden><div><span id="reference-progress-fill"></span></div><small id="reference-progress-label">Preparing reference…</small></div>
+          <canvas id="reference-viz" width="900" height="170" aria-label="Synchronized audio energy, spectral centroid and video motion timeline"></canvas>
+          <div class="reference-legend"><span><i class="reference-legend-rms"></i> AUDIO WAVEFORM</span><span><i class="reference-legend-spectrum"></i> SPECTRAL CENTROID</span><span><i class="reference-legend-bands"></i> FREQUENCY BANDS</span><span><i class="reference-legend-motion"></i> VIDEO MOTION</span></div>
+          <div class="reference-metrics">
+            <div><span>DURATION</span><strong id="reference-duration">—</strong></div>
+            <div><span>ESTIMATED TEMPO</span><strong id="reference-tempo">—</strong></div>
+            <div><span>SPECTRAL CENTROID</span><strong id="reference-centroid">—</strong></div>
+            <div><span>VISUAL MOTION</span><strong id="reference-motion">—</strong></div>
+          </div>
+          <p class="reference-band-readout">BAND ENERGY <strong id="reference-bands">LOW — · MID — · HIGH —</strong></p>
+          <button id="toggle-reference-guide" class="feature-toggle reference-guide-toggle" type="button" aria-pressed="false" disabled><span class="toggle-indicator"></span><span><b>REFERENCE-GUIDED COMPOSITION</b><small>Blend measured energy and onset contour into the mathematical source</small></span><strong>OFF</strong></button>
+          <p class="reference-guide-note" id="reference-guide-note">Import a reference to analyze its audio and optionally guide the composition. The mathematical source remains primary.</p>
+          <p class="reference-message" id="reference-message">Audio is decoded locally. Video audio is captured in real time; visual frames are sampled on the same timeline.</p>
+        </section>
         <div class="controls"><div class="section-label">03 / PARAMETERS</div><div class="control-grid">
           <label>Tempo <output id="bpm-value">128 BPM</output><input id="bpm" type="range" min="60" max="160" value="128"/></label>
           <label>Complexity <output id="complexity-value">55%</output><input id="complexity" type="range" min="10" max="100" value="55"/></label>
@@ -63,10 +96,23 @@ app.innerHTML = `
 const $ = <T extends HTMLElement>(selector: string) => app.querySelector<T>(selector)!;
 const canvas = $("#viz") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
+function effectiveBpm(): number {
+  const referenceTempo = referenceGuideEnabled && mode !== "shepard"
+    ? referenceAnalysis?.estimatedTempoBpm
+    : null;
+  const reliableTempo = referenceAnalysis && referenceAnalysis.tempoConfidence >= 0.2;
+  return referenceTempo && reliableTempo
+    ? Math.min(160, Math.max(60, referenceTempo))
+    : Number(($("#bpm") as HTMLInputElement).value);
+}
+function activeReferenceGuide(): number[] | undefined {
+  if (!referenceGuideEnabled || mode === "shepard" || !referenceAnalysis?.audioDetected) return undefined;
+  return buildReferenceGuide(referenceAnalysis.frames);
+}
 function options() {
   const center = ($("#root") as HTMLSelectElement).value;
   return {
-    bpm: Number(($("#bpm") as HTMLInputElement).value),
+    bpm: effectiveBpm(),
     complexity: Number(($("#complexity") as HTMLInputElement).value) / 100,
     root: center === "auto" ? 60 : Number(center),
     tonalCenter: center === "auto" ? "auto" as const : Number(center),
@@ -75,7 +121,9 @@ function options() {
     seed: currentSeed,
     richInstruments: richInstrumentsEnabled,
     musicalArrangement: musicalArrangementEnabled,
-    musicalExpression: musicalExpressionEnabled
+    musicalExpression: musicalExpressionEnabled,
+    referenceGuide: activeReferenceGuide(),
+    referenceInfluence: 0.24
   };
 }
 
@@ -98,13 +146,14 @@ function updatePlayButtonState() {
 function updateEngineSummary(composition?: Composition) {
   const engine = selectedEngine();
   const label = engine === "wasm" ? "C++ / WASM CANDIDATE" : "TYPESCRIPT BASELINE";
-  const bpm = Number(($("#bpm") as HTMLInputElement).value);
+  const bpm = effectiveBpm();
   const seed = Math.round(currentSeed * 1_000_000);
   const tonal = composition?.tonality
     ? " · " + composition.tonality.scale.toUpperCase()
     : "";
   const eventCount = composition ? " · " + composition.events.length + " SCORE EVENTS" : "";
-  $("#engine-summary").textContent = label + " · " + bpm + " BPM · SEED " + seed + tonal + eventCount;
+  const guideLabel = referenceGuideEnabled && mode !== "shepard" ? " · REFERENCE GUIDE" : "";
+  $("#engine-summary").textContent = label + " · " + bpm + " BPM · SEED " + seed + tonal + eventCount + guideLabel;
 }
 function updateEngineControls() {
   const select = $("#engine-select") as HTMLSelectElement;
@@ -125,6 +174,7 @@ function updateEngineControls() {
     : mode === "shepard"
       ? "The Shepard illusion is a dedicated TypeScript experiment and is not part of the C++ score engine."
       : "Production baseline. The C++ candidate remains opt-in; no production engine has been changed.";
+  updateReferenceGuideControls();
   updatePlayButtonState();
   updateEngineSummary();
 }
@@ -133,7 +183,7 @@ function wasmGenerationOptions(): WasmGenerationOptions {
   return {
     // Preserve a stable integer counterpart to the fractional UI seed.
     seed: Math.round(currentSeed * 1_000_000),
-    bpm: Number(($("#bpm") as HTMLInputElement).value),
+    bpm: effectiveBpm(),
     collection: ($("#scale") as HTMLSelectElement).value as NoteCollection,
     rootPitchClass: center === "auto" ? "auto" : Number(center) % 12,
     mode: ($("#tonal-mode") as HTMLSelectElement).value as TonalModeChoice,
@@ -163,6 +213,190 @@ async function generateAuditionComposition(
     musicalExpression: musicalExpressionEnabled
   };
 }
+
+function formatMediaDuration(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "—";
+  const minutes = Math.floor(seconds / 60);
+  const remaining = Math.floor(seconds % 60);
+  return minutes + ":" + String(remaining).padStart(2, "0");
+}
+function updateReferenceGuideControls() {
+  const button = $("#toggle-reference-guide") as HTMLButtonElement;
+  const available = Boolean(referenceAnalysis?.audioDetected);
+  const pausedForShepard = mode === "shepard" && referenceGuideEnabled;
+  button.disabled = !available || mode === "shepard";
+  button.classList.toggle("enabled", referenceGuideEnabled);
+  button.setAttribute("aria-pressed", String(referenceGuideEnabled));
+  button.querySelector("strong")!.textContent = pausedForShepard
+    ? "PAUSED"
+    : referenceGuideEnabled ? "ON" : "OFF";
+  const tempo = referenceAnalysis?.estimatedTempoBpm;
+  const reliableTempo = Boolean(tempo && (referenceAnalysis?.tempoConfidence ?? 0) >= 0.2);
+  $("#reference-guide-note").textContent = !referenceAnalysis
+    ? "Import a reference to analyze its audio and optionally guide the composition. The mathematical source remains primary."
+    : !available
+      ? "No usable audio track was detected. Video motion remains available, but audio cannot guide music generation."
+      : mode === "shepard"
+        ? "The Shepard illusion keeps its dedicated continuous-octave behavior; reference guidance is paused in this experiment."
+        : referenceGuideEnabled
+          ? "ACTIVE · 24% reference energy/onset contour blend · " +
+            (reliableTempo ? "tempo follows the " + tempo + " BPM reference estimate." : "no confident tempo estimate; your tempo control remains active.")
+          : "OFF · mathematical source is unchanged. Turn this on to blend 24% measured reference energy/onset contour into the source.";
+  const bpmOutput = $("#bpm-value");
+  const sliderBpm = Number(($("#bpm") as HTMLInputElement).value);
+  bpmOutput.textContent = effectiveBpm() + " BPM" +
+    (referenceGuideEnabled && mode !== "shepard" && reliableTempo ? " · REF" : "");
+  if (!referenceGuideEnabled || mode === "shepard" || !reliableTempo) {
+    bpmOutput.textContent = sliderBpm + " BPM";
+  }
+}
+function drawReferenceTimeline() {
+  const referenceCanvas = $("#reference-viz") as HTMLCanvasElement;
+  const referenceContext = referenceCanvas.getContext("2d");
+  if (!referenceContext) return;
+  const width = referenceCanvas.width;
+  const height = referenceCanvas.height;
+  referenceContext.clearRect(0, 0, width, height);
+  referenceContext.fillStyle = "#0b131b";
+  referenceContext.fillRect(0, 0, width, height);
+  referenceContext.strokeStyle = "rgba(143,170,190,.12)";
+  referenceContext.lineWidth = 1;
+  for (let y = 28; y < height; y += 34) {
+    referenceContext.beginPath();
+    referenceContext.moveTo(0, y);
+    referenceContext.lineTo(width, y);
+    referenceContext.stroke();
+  }
+  if (!referenceAnalysis) {
+    referenceContext.fillStyle = "#72838e";
+    referenceContext.font = "12px DM Mono";
+    referenceContext.fillText("IMPORT A LOCAL AUDIO OR VIDEO REFERENCE", 18, height / 2);
+    return;
+  }
+  const analysis = referenceAnalysis;
+  const frames = analysis.frames;
+  const maxWave = Math.max(1e-6, ...frames.flatMap(frame => [
+    Math.abs(frame.waveformMinimum), Math.abs(frame.waveformMaximum)
+  ]));
+  const maxCentroid = Math.max(1, ...frames.map(frame => frame.spectralCentroidHz));
+  const maxMotion = Math.max(1e-6, ...frames.map(frame => frame.visualMotion));
+  const slotWidth = width / frames.length;
+  frames.forEach((frame, index) => {
+    const x = index * slotWidth;
+    if (analysis.audioDetected) {
+      const center = height * 0.52;
+      const top = center - (frame.waveformMaximum / maxWave) * 46;
+      const bottom = center - (frame.waveformMinimum / maxWave) * 46;
+      referenceContext.strokeStyle = "rgba(131,197,178," + (0.3 + Math.min(0.65, frame.rms * 1.2)) + ")";
+      referenceContext.lineWidth = Math.max(1, slotWidth - 1);
+      referenceContext.beginPath();
+      referenceContext.moveTo(x + slotWidth / 2, top);
+      referenceContext.lineTo(x + slotWidth / 2, bottom);
+      referenceContext.stroke();
+      const lowWidth = Math.max(0, frame.lowBandEnergy) * Math.max(1, slotWidth - 1);
+      const midWidth = Math.max(0, frame.midBandEnergy) * Math.max(1, slotWidth - 1);
+      const highWidth = Math.max(0, frame.highBandEnergy) * Math.max(1, slotWidth - 1);
+      referenceContext.fillStyle = "rgba(131,197,178,.8)";
+      referenceContext.fillRect(x, height - 7, lowWidth, 3);
+      referenceContext.fillStyle = "rgba(183,162,223,.8)";
+      referenceContext.fillRect(x + lowWidth, height - 7, midWidth, 3);
+      referenceContext.fillStyle = "rgba(244,213,138,.8)";
+      referenceContext.fillRect(x + lowWidth + midWidth, height - 7, highWidth, 3);
+    }
+    if (analysis.visualFrameCount > 0) {
+      const motion = Math.max(0, Math.min(1, frame.visualMotion / maxMotion));
+      referenceContext.fillStyle = "rgba(244,213,138," + (0.18 + motion * 0.72) + ")";
+      referenceContext.fillRect(x + 1, height - 19, Math.max(1, slotWidth - 2), 3 + motion * 8);
+    }
+  });
+  if (analysis.audioDetected) {
+    referenceContext.beginPath();
+    frames.forEach((frame, index) => {
+      const x = (index + 0.5) * slotWidth;
+      const y = 10 + (1 - Math.min(1, frame.spectralCentroidHz / maxCentroid)) * 46;
+      if (index === 0) referenceContext.moveTo(x, y);
+      else referenceContext.lineTo(x, y);
+    });
+    referenceContext.strokeStyle = "#b7a2df";
+    referenceContext.lineWidth = 1.8;
+    referenceContext.stroke();
+  }
+  const media = referenceKind === "video"
+    ? $("#reference-video") as HTMLVideoElement
+    : $("#reference-audio") as HTMLAudioElement;
+  if (media && Number.isFinite(media.duration) && media.duration > 0) {
+    const x = Math.max(0, Math.min(width, media.currentTime / media.duration * width));
+    referenceContext.strokeStyle = "rgba(255,240,194,.92)";
+    referenceContext.lineWidth = 1.5;
+    referenceContext.beginPath();
+    referenceContext.moveTo(x, 0);
+    referenceContext.lineTo(x, height);
+    referenceContext.stroke();
+  }
+}
+function animateReferenceTimeline() {
+  const media = referenceKind === "video"
+    ? $("#reference-video") as HTMLVideoElement
+    : $("#reference-audio") as HTMLAudioElement;
+  drawReferenceTimeline();
+  if (!media || media.paused || media.ended) {
+    cancelAnimationFrame(referenceTimelineFrame);
+    referenceTimelineFrame = 0;
+    return;
+  }
+  referenceTimelineFrame = requestAnimationFrame(animateReferenceTimeline);
+}
+function updateReferenceMetrics(analysis: ReferenceMediaAnalysis) {
+  $("#reference-duration").textContent = formatMediaDuration(analysis.durationSeconds);
+  $("#reference-tempo").textContent = analysis.estimatedTempoBpm
+    ? analysis.estimatedTempoBpm + " BPM · " + Math.round(analysis.tempoConfidence * 100) + "%"
+    : "NOT DETECTED";
+  $("#reference-centroid").textContent = analysis.averageSpectralCentroidHz > 0
+    ? Math.round(analysis.averageSpectralCentroidHz) + " Hz"
+    : "—";
+  const bandMean = (key: "lowBandEnergy" | "midBandEnergy" | "highBandEnergy") =>
+    analysis.frames.reduce((sum, frame) => sum + frame[key], 0) /
+    Math.max(1, analysis.frames.length);
+  $("#reference-bands").textContent = analysis.audioDetected
+    ? "LOW " + Math.round(bandMean("lowBandEnergy") * 100) + "% · MID " +
+      Math.round(bandMean("midBandEnergy") * 100) + "% · HIGH " +
+      Math.round(bandMean("highBandEnergy") * 100) + "%"
+    : "NO AUDIO";
+  const motion = analysis.frames.reduce((sum, frame) => sum + frame.visualMotion, 0) /
+    Math.max(1, analysis.frames.length);
+  $("#reference-motion").textContent = analysis.visualFrameCount > 0
+    ? (motion * 100).toFixed(1) + "%"
+    : "AUDIO ONLY";
+  $("#reference-status").textContent = analysis.kind.toUpperCase() + " · ANALYZED";
+  const warnings = analysis.warnings.length ? " " + analysis.warnings.join(" ") : "";
+  $("#reference-message").textContent =
+    (analysis.audioDetected
+      ? (analysis.signal ? "C++ / WASM signal summary · " : "Browser spectral analysis · ") +
+        analysis.analysisSampleRateHz.toFixed(0) + " Hz analysis clock · " +
+        analysis.sourceChannelCount + " source channel(s) downmixed to mono for timeline analysis."
+      : "Visual-only reference analysis · no audio-derived metrics or tempo were inferred.") + warnings;
+}
+function resetReferenceAnalysis() {
+  referenceAbort?.abort();
+  referenceAbort = null;
+  referenceAnalysis = null;
+  referenceGuideEnabled = false;
+  ($("#reference-progress") as HTMLDivElement).hidden = true;
+  drawReferenceTimeline();
+  $("#reference-duration").textContent = "—";
+  $("#reference-tempo").textContent = "—";
+  $("#reference-centroid").textContent = "—";
+  $("#reference-motion").textContent = "—";
+  $("#reference-bands").textContent = "LOW — · MID — · HIGH —";
+  updateReferenceGuideControls();
+}
+function setReferenceProgress(progress: number, message: string) {
+  const percent = Math.max(0, Math.min(1, progress));
+  $("#reference-progress").hidden = false;
+  ($("#reference-progress-fill") as HTMLSpanElement).style.width = (percent * 100) + "%";
+  $("#reference-progress-label").textContent = message;
+}
+
 function updateSignalAnalysisReadout(analysis?: ScientificSignalAnalysis) {
   const summary = analysis?.channels[0];
   if (!summary) {
@@ -327,8 +561,201 @@ function setMode(next: Mode) {
   mode = next;
   updateEngineControls();
   app.querySelectorAll<HTMLButtonElement>(".mode").forEach(b=>b.classList.toggle("active",b.dataset.mode===mode));
-  $("#mode-title").textContent=names[mode];$("#mode-description").textContent=descriptions[mode];render();void updateLiveComposition();
+  $("#mode-title").textContent=names[mode];$("#mode-description").textContent=descriptions[mode];updateReferenceGuideControls();render();void updateLiveComposition();
 }
+
+function inferReferenceKind(file: File): "audio" | "video" {
+  const extension = file.name.toLowerCase().split(".").pop() ?? "";
+  const videoExtensions = ["mp4", "mov", "webm", "m4v", "avi", "mkv", "ogv"];
+  return file.type.startsWith("video/") || videoExtensions.includes(extension) ? "video" : "audio";
+}
+$("#reference-file").addEventListener("change", () => {
+  const file = ($("#reference-file") as HTMLInputElement).files?.[0];
+  if (!file) return;
+  referenceAbort?.abort();
+  referenceAbort = null;
+  if (referenceObjectUrl) URL.revokeObjectURL(referenceObjectUrl);
+  referenceObjectUrl = null;
+  const previousAudio = $("#reference-audio") as HTMLAudioElement;
+  const previousVideo = $("#reference-video") as HTMLVideoElement;
+  previousAudio.pause();
+  previousVideo.pause();
+  previousAudio.removeAttribute("src");
+  previousVideo.removeAttribute("src");
+  previousAudio.load();
+  previousVideo.load();
+  previousAudio.hidden = true;
+  previousVideo.hidden = true;
+  referenceFile = file;
+  referenceKind = inferReferenceKind(file);
+  resetReferenceAnalysis();
+  try {
+    validateReferenceFile(file, referenceKind);
+  } catch (error) {
+    referenceFile = null;
+    referenceKind = null;
+    $("#reference-status").textContent = "INVALID FILE";
+    $("#reference-message").textContent = error instanceof Error ? error.message : "Unsupported reference file.";
+    ($("#analyze-reference") as HTMLButtonElement).disabled = true;
+    ($("#clear-reference") as HTMLButtonElement).disabled = false;
+    return;
+  }
+  referenceObjectUrl = URL.createObjectURL(file);
+  const audio = $("#reference-audio") as HTMLAudioElement;
+  const video = $("#reference-video") as HTMLVideoElement;
+  audio.pause();
+  video.pause();
+  audio.hidden = referenceKind !== "audio";
+  video.hidden = referenceKind !== "video";
+  if (referenceKind === "audio") {
+    audio.src = referenceObjectUrl;
+    audio.load();
+  } else {
+    video.src = referenceObjectUrl;
+    video.load();
+  }
+  $("#reference-status").textContent = "READY TO ANALYZE";
+  $("#reference-message").textContent =
+    file.name + " · " + (file.size / (1024 * 1024)).toFixed(1) +
+    " MB · processing stays on this device.";
+  ($("#analyze-reference") as HTMLButtonElement).disabled = false;
+  ($("#clear-reference") as HTMLButtonElement).disabled = false;
+  drawReferenceTimeline();
+  render();
+  updateLiveComposition();
+});
+$("#analyze-reference").addEventListener("click", async () => {
+  const file = referenceFile;
+  const kind = referenceKind;
+  if (!file || !kind) return;
+  referenceAbort?.abort();
+  const controller = new AbortController();
+  referenceAbort = controller;
+  const button = $("#analyze-reference") as HTMLButtonElement;
+  const input = $("#reference-file") as HTMLInputElement;
+  button.disabled = true;
+  input.disabled = true;
+  $("#reference-status").textContent = "ANALYZING";
+  $("#reference-message").textContent = "Preparing local media decoding…";
+  setReferenceProgress(0.02, "Preparing local media decoding");
+  try {
+    let analysis: ReferenceMediaAnalysis;
+    if (kind === "audio") {
+      const audioBuffer = await decodeAudioFile(file);
+      if (controller.signal.aborted) throw new DOMException("Cancelled", "AbortError");
+      setReferenceProgress(0.18, "Resampling and downmixing audio");
+      const prepared = await prepareMonoReferenceAudio(audioBuffer, controller.signal);
+      setReferenceProgress(0.42, "Running spectral and rhythm analysis");
+      analysis = await analyzeReferenceSamples(prepared.samples, prepared.sampleRateHz, {
+        fileName: file.name,
+        kind: "audio",
+        durationSeconds: audioBuffer.duration,
+        sourceSampleRateHz: audioBuffer.sampleRate,
+        sourceChannelCount: audioBuffer.numberOfChannels
+      });
+    } else {
+      const extracted = await extractVideoReference(
+        file,
+        controller.signal,
+        (progress, message) => setReferenceProgress(progress, message)
+      );
+      if (controller.signal.aborted) throw new DOMException("Cancelled", "AbortError");
+      if (extracted.audioBuffer) {
+        setReferenceProgress(0.84, "Resampling captured video audio");
+        const prepared = await prepareMonoReferenceAudio(extracted.audioBuffer, controller.signal);
+        setReferenceProgress(0.92, "Analyzing audio and synchronized video timeline");
+        analysis = await analyzeReferenceSamples(prepared.samples, prepared.sampleRateHz, {
+          fileName: file.name,
+          kind: "video",
+          durationSeconds: extracted.durationSeconds,
+          sourceSampleRateHz: extracted.sourceSampleRateHz,
+          sourceChannelCount: extracted.sourceChannelCount,
+          visualFrames: extracted.visualFrames,
+          warnings: extracted.warnings
+        });
+      } else {
+        analysis = createVisualOnlyReferenceAnalysis({
+          fileName: file.name,
+          durationSeconds: extracted.durationSeconds,
+          visualFrames: extracted.visualFrames,
+          warnings: extracted.warnings
+        });
+      }
+    }
+    if (controller.signal.aborted) throw new DOMException("Cancelled", "AbortError");
+    referenceAnalysis = analysis;
+    referenceGuideEnabled = false;
+    updateReferenceMetrics(analysis);
+    updateReferenceGuideControls();
+    drawReferenceTimeline();
+    $("#reference-progress-label").textContent = "Analysis complete";
+    ($("#reference-progress-fill") as HTMLSpanElement).style.width = "100%";
+    render();
+    updateEngineSummary();
+  } catch (error) {
+    if (!controller.signal.aborted) {
+      $("#reference-status").textContent = "ANALYSIS FAILED";
+      $("#reference-message").textContent = error instanceof Error
+        ? error.message
+        : "The reference media could not be analyzed.";
+      console.error("Reference media analysis failed:", error);
+    } else if (referenceAbort === controller) {
+      $("#reference-status").textContent = "CANCELLED";
+      $("#reference-message").textContent = "Reference analysis was cancelled.";
+    }
+  } finally {
+    if (referenceAbort === controller) {
+      referenceAbort = null;
+      button.disabled = !referenceFile;
+      input.disabled = false;
+    }
+  }
+});
+$("#clear-reference").addEventListener("click", () => {
+  resetReferenceAnalysis();
+  referenceFile = null;
+  referenceKind = null;
+  if (referenceObjectUrl) URL.revokeObjectURL(referenceObjectUrl);
+  referenceObjectUrl = null;
+  const audio = $("#reference-audio") as HTMLAudioElement;
+  const video = $("#reference-video") as HTMLVideoElement;
+  audio.pause();
+  video.pause();
+  audio.removeAttribute("src");
+  video.removeAttribute("src");
+  audio.load();
+  video.load();
+  audio.hidden = true;
+  video.hidden = true;
+  ($("#reference-file") as HTMLInputElement).value = "";
+  ($("#reference-file") as HTMLInputElement).disabled = false;
+  ($("#analyze-reference") as HTMLButtonElement).disabled = true;
+  ($("#clear-reference") as HTMLButtonElement).disabled = true;
+  ($("#reference-progress") as HTMLDivElement).hidden = true;
+  $("#reference-status").textContent = "NO REFERENCE";
+  $("#reference-message").textContent = "Audio and video references are processed locally in this browser.";
+  render();
+  updateLiveComposition();
+});
+$("#toggle-reference-guide").addEventListener("click", () => {
+  if (!referenceAnalysis?.audioDetected || mode === "shepard") return;
+  referenceGuideEnabled = !referenceGuideEnabled;
+  updateReferenceGuideControls();
+  render();
+  updateLiveComposition();
+});
+(["reference-audio", "reference-video"] as const).forEach(id => {
+  const media = $("#" + id) as HTMLMediaElement;
+  media.addEventListener("play", () => {
+    cancelAnimationFrame(referenceTimelineFrame);
+    animateReferenceTimeline();
+  });
+  media.addEventListener("pause", drawReferenceTimeline);
+  media.addEventListener("seeked", drawReferenceTimeline);
+  media.addEventListener("timeupdate", drawReferenceTimeline);
+  media.addEventListener("ended", drawReferenceTimeline);
+});
+
  app.querySelectorAll<HTMLButtonElement>(".mode").forEach(b=>b.addEventListener("click",()=>setMode(b.dataset.mode as Mode)));
 $("#engine-select").addEventListener("change", () => {
   updateEngineControls();
@@ -377,6 +804,7 @@ $("#toggle-arrangement").addEventListener("click", () => {
 ["bpm","complexity","root","scale","tonal-mode"].forEach(id=>$(`#${id}`).addEventListener("input",()=>{
   if(id==="bpm")$("#bpm-value").textContent=( $("#bpm") as HTMLInputElement).value+" BPM";
   if(id==="complexity")$("#complexity-value").textContent=( $("#complexity") as HTMLInputElement).value+"%";
+  updateReferenceGuideControls();
   render();updateLiveComposition();
 }));
 $("#master-volume").addEventListener("input", () => {
@@ -445,6 +873,10 @@ $("#export-wav").addEventListener("click", async () => {
     window.setTimeout(() => { button.disabled = false; button.textContent = "↓ EXPORT WAV"; }, 1800);
   }
 });
-window.addEventListener("beforeunload",()=>player.stop());
+window.addEventListener("beforeunload",()=>{
+  player.stop();
+  referenceAbort?.abort();
+  if (referenceObjectUrl) URL.revokeObjectURL(referenceObjectUrl);
+});
 updateEngineControls();
 render();

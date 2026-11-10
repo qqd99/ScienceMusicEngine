@@ -2,7 +2,7 @@
 
 A browser-based mathematics-to-sound laboratory. It turns deterministic mathematical structures into original music using the native Web Audio API.
 
-**No AI-generated music. No downloaded audio or art assets. No third-party audio services.**
+**No AI-generated music. No downloaded audio or art assets. No third-party audio services.** User-selected reference files are analyzed locally in the browser and are never uploaded.
 
 ## Live app
 
@@ -51,6 +51,20 @@ A reusable C++17 signal-analysis module now sits between scientific source data 
 The packed C ABI and WebAssembly adapter return channel summaries, time-normalized feature frames, and pairwise relationships. The browser displays the current mathematical source's mean, RMS, activity and period, plus a window-activity envelope aligned to the same normalized playhead used by playback. The C++ musical-intelligence phrase profiles reuse this analyzer's RMS and activity measurements, so conductor analysis and the visual signal track share one feature definition.
 
 The current Mathematics Lab supplies one normalized mathematical channel with no physical sample clock. It therefore reports periods in sample steps and deliberately does **not** invent a frequency in Hz. The multi-channel API is ready for future physical models (for example, three-phase electrical signals), but no power-grid or other new science experiment has been added yet.
+
+## Reference Media Analysis (v1.2)
+
+The Mathematics Lab includes a local reference-media panel for supported audio and video formats. Audio files are decoded with the browser's Web Audio API. Video files are played through a local Web Audio capture path to extract their audio track, then sampled at up to 96 timestamps to estimate brightness and frame-to-frame visual motion. Video audio capture runs in real time; audio-file decoding and analysis are offline after the file is selected.
+
+The analysis timeline aligns 128 windows of audio RMS/activity, spectral centroid, low/mid/high-band energy and onset strength with sampled video motion. Each timeline window averages every overlapping FFT frame rather than sampling a single point. A windowed FFT estimates spectral centroid and broad frequency-band balance; onset-envelope autocorrelation provides a tempo estimate with a confidence score. The C++/WebAssembly scientific analyzer supplies the shared signal summary and normalized timeline features. If the WASM module is unavailable, browser-side spectral analysis still completes and reports that limitation.
+
+- Audio references: maximum 10 minutes and 150 MB.
+- Video references: maximum 3 minutes and 150 MB, because browser audio capture must run in real time.
+- Audio is downmixed to mono and resampled to a 12 kHz browser FFT clock (up to 7.2 million samples for the 10-minute limit). A separate box-filtered copy is decimated to at most 900,000 samples for the bounded C++/WASM ABI, with its sample rate adjusted to preserve physical-frequency interpretation. The original file remains local and is available in the preview player.
+- Video frame motion is an image-difference measurement from small local frame samples, not object recognition or semantic scene understanding.
+- Tempo is an estimate, not guaranteed ground truth. Silent, ambiguous or rhythmically irregular recordings may have no confident BPM.
+- **Reference-guided composition** is optional. When enabled, the estimated tempo is used only when confidence is sufficient, and a 24% blend of normalized reference energy/onset contour influences the mathematical source sequence. Mathematics remains the primary source; the raw recording is not turned into copied notes or used as an instrument sample.
+- The dedicated Shepard illusion is not reference-guided, preserving its continuous octave-layer behavior.
 
 ## C++ Musical Intelligence Core (v1.0)
 

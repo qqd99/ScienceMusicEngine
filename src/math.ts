@@ -361,6 +361,10 @@ export function generateComposition(mode: Mode, options: {
   bpm?: number; root?: number; scale?: string; complexity?: number; seed?: number;
   richInstruments?: boolean; musicalArrangement?: boolean; musicalExpression?: boolean;
   noteCollection?: NoteCollection; tonalCenter?: number | "auto"; tonalMode?: TonalModeChoice;
+  /** Optional normalized reference-media contour blended into the mathematical source. */
+  referenceGuide?: readonly number[];
+  /** Reference contribution is deliberately capped so mathematics remains the primary source. */
+  referenceInfluence?: number;
 } = {}): Composition {
   const bpm = clamp(options.bpm ?? 128, 45, 180);
   const complexity = clamp(options.complexity ?? 0.55, 0.1, 1);
@@ -399,6 +403,25 @@ export function generateComposition(mode: Mode, options: {
     }
   } else {
     for (let i = 0; i < steps; i++) values.push(i / steps);
+  }
+
+  if (mode !== "shepard" && options.referenceGuide?.length) {
+    const guide = options.referenceGuide;
+    const influence = clamp(options.referenceInfluence ?? 0.24, 0, 0.5);
+    if (influence > 0) {
+      const original = values.slice();
+      for (let index = 0; index < values.length; index += 1) {
+        const position = values.length <= 1 ? 0 : (index / (values.length - 1)) * (guide.length - 1);
+        const left = Math.floor(position);
+        const right = Math.min(guide.length - 1, left + 1);
+        const fraction = position - left;
+        const referenceValue = clamp(
+          (guide[left] ?? 0.5) * (1 - fraction) + (guide[right] ?? 0.5) * fraction,
+          0, 1
+        );
+        values[index] = clamp(original[index] * (1 - influence) + referenceValue * influence, 0, 1);
+      }
+    }
   }
 
   const tonalCenterChoice = options.tonalCenter ?? options.root ?? 60;
