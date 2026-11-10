@@ -158,7 +158,7 @@ The user requested the next Generative Music Engine milestone to prioritize **mu
 ### Experimental WebAssembly bridge (opt-in A/B audition; not the production default)
 
 - Implementation branch `feat/wasm-bridge` was merged through pull request https://github.com/qqd99/ScienceMusicEngine/pull/1. The merged main commit is `622767213e5f3dba8b153002b1a4278f8d1d62e5`.
-- GitHub Actions run #140 passed on the audition UI commit: TypeScript tests, native C++ build/CTest, native CLI smoke test, Emscripten build, native/WASM event parity, and Vite production build all passed. The subsequent main-branch Pages deployment is tracked by run #141.
+- GitHub Actions run #140 passed on the audition UI commit: TypeScript tests, native C++ build/CTest, native CLI smoke test, Emscripten build, native/WASM event parity, and Vite production build all passed. After merge, the main-branch build and GitHub Pages deployment completed successfully.
 - The packed entry point is declared in intelligence_c.h as sme_generate_score_packed. Its options are a fixed 11-word uint32 array; event records are eight doubles and tonal metadata is seven doubles. This avoids JavaScript depending on wasm32 C struct padding.
 - The C++ C ABI remains caller-buffer-owned. JavaScript allocates source, options, count, tonal metadata and event buffers with _malloc, checks status codes, copies all returned values into JS-owned arrays, then releases every pointer in a finally block. The module retains no JS buffers.
 - Emscripten builds a modularized ES module and companion .wasm file into public/wasm. Generated artifacts are ignored and are created by scripts/build-wasm.sh.
