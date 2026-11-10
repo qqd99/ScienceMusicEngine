@@ -1,7 +1,7 @@
 export interface ScientificSignalChannelInput {
   id: string;
   unit?: string;
-  samples: readonly number[];
+  samples: ArrayLike<number>;
 }
 export interface ScientificSignalInput {
   channels: readonly ScientificSignalChannelInput[];
